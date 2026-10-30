@@ -1,4 +1,3 @@
-# Chưa có tiêu đề
 
 # Distributed Industrial Safety & Environmental Monitoring System via CAN Bus & 4G LTE Gateway
 
