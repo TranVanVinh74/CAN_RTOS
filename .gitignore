@@ -1,0 +1,29 @@
+# Build outputs
+*.o
+*.obj
+*.elf
+*.axf
+*.hex
+*.bin
+*.map
+*.lst
+*.list
+*.d
+*.crf
+*.htm
+*.build_log.htm
+
+# Build directories
+build/
+Debug/
+Release/
+Objects/
+Listings/
+
+# Keil personal settings
+*.uvguix.*
+*.uvoptx
+*.uvopt
+*.bak
+*.dep
+*.tmp
