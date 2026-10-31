@@ -22,12 +22,19 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "TFT.h"
+#include <stdbool.h>
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef struct {
+    uint8_t fan_state;      // 0: T?t Qu?t, 1: B?t Qu?t
+    uint8_t temperature;    // Nhi?t d? hi?n t?i t? Node 1
+    uint8_t humidity;       // Ð? ?m hi?n t?i t? Node 1
+    uint16_t gas_level;     // N?ng d? gas hi?n t?i
+} ActuatorCommand_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -45,8 +52,10 @@ CAN_HandleTypeDef hcan;
 
 SPI_HandleTypeDef hspi1;
 
+osThreadId defaultTaskHandle;
 /* USER CODE BEGIN PV */
-
+QueueHandle_t xActuatorQueue = NULL;
+TaskHandle_t xTaskActuatorHandle = NULL;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -57,7 +66,7 @@ static void MX_SPI1_Init(void);
 
 
 /* USER CODE BEGIN PFP */
-
+void Task_Actuator(void *pvParameters);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -97,15 +106,59 @@ int main(void)
   MX_CAN_Init();
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
+initTFT(&hspi1);
+  fullDisplay(TFT_BLACK);
+  drawString(10, 10, "NODE 2: ACTUATOR", Font_7x10, TFT_YELLOW, TFT_BLACK);
+  drawLine(0, 25, 127, 25, TFT_WHITE);
+  
+  drawString(5, 35, "FAN : OFF", Font_7x10, TFT_WHITE, TFT_BLACK);
+  drawString(5, 55, "TEMP: -- C", Font_7x10, TFT_CYAN, TFT_BLACK);
+  drawString(5, 75, "HUM : -- %", Font_7x10, TFT_CYAN, TFT_BLACK);
+  drawString(5, 95, "GAS : ----", Font_7x10, TFT_RED, TFT_BLACK);
 
-/* USER CODE END 2 */
+  // 2. C?u hình Filter CAN nh?n ID 0x200 (L?nh t? Gateway) ho?c nh?n t?t c? (Mask = 0x0000)
+  CAN_FilterTypeDef canFilterConfig;
+  canFilterConfig.FilterBank = 0;
+  canFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
+  canFilterConfig.FilterScale = CAN_FILTERSCALE_32BIT;
+  canFilterConfig.FilterIdHigh = 0x0000;
+  canFilterConfig.FilterIdLow = 0x0000;
+  canFilterConfig.FilterMaskIdHigh = 0x0000;
+  canFilterConfig.FilterMaskIdLow = 0x0000;
+  canFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO0;
+  canFilterConfig.FilterActivation = ENABLE;
+  canFilterConfig.SlaveStartFilterBank = 14;
+  HAL_CAN_ConfigFilter(&hcan, &canFilterConfig);
+
+  // 3. Kh?i ch?y CAN và kích ho?t ng?t FIFO 0
+  HAL_CAN_Start(&hcan);
+  HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
+  /* USER CODE END 2 */
+
+  /* USER CODE BEGIN RTOS_MUTEX */
+  /* add mutexes, ... */
+  /* USER CODE END RTOS_MUTEX */
+
+  /* USER CODE BEGIN RTOS_SEMAPHORES */
+  /* add semaphores, ... */
+  /* USER CODE END RTOS_SEMAPHORES */
+
+  /* USER CODE BEGIN RTOS_TIMERS */
+  /* start timers, add new ones, ... */
+  /* USER CODE END RTOS_TIMERS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
-  /* IPC objects will be added during integration. */
+  /* add queues, ... */
+  xActuatorQueue = xQueueCreate(5, sizeof(ActuatorCommand_t));
   /* USER CODE END RTOS_QUEUES */
 
+  /* Create the thread(s) */
+  /* definition and creation of defaultTask */
+ 
+
   /* USER CODE BEGIN RTOS_THREADS */
-  /* Application tasks will be added during integration. */
+  /* add threads, ... */
+  xTaskCreate(Task_Actuator, "ActuatorTask", 512, NULL, 2, &xTaskActuatorHandle);
   /* USER CODE END RTOS_THREADS */
 
   /* Start scheduler */
@@ -274,7 +327,88 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+    CAN_RxHeaderTypeDef rxHeader;
+    uint8_t rxData[8];
+    ActuatorCommand_t cmd;
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
+    if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &rxHeader, rxData) == HAL_OK)
+    {
+        // 1. Tru?ng h?p nh?n b?n tin di?u khi?n t? Gateway (ID: 0x200)
+        // Byte 0: L?nh Fan (1 = ON, 0 = OFF)
+        if (rxHeader.StdId == 0x200)
+        {
+            cmd.fan_state = rxData[0];
+            cmd.temperature = rxData[1];
+            cmd.humidity = rxData[2];
+            cmd.gas_level = ((uint16_t)rxData[3] << 8) | rxData[4];
+
+            if (xActuatorQueue != NULL)
+            {
+                xQueueSendFromISR(xActuatorQueue, &cmd, &xHigherPriorityTaskWoken);
+                portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+            }
+        }
+        // 2. Tru?ng h?p nghe lén tr?c ti?p t? Node 1 Sensor (ID: 0x100) d? t? d?ng hóa
+        else if (rxHeader.StdId == 0x100)
+        {
+            cmd.temperature = rxData[0];
+            cmd.humidity = rxData[1];
+            cmd.gas_level = ((uint16_t)rxData[2] << 8) | rxData[3];
+            
+            // T? b?t qu?t n?u khí gas vu?t ngu?ng 1500 (ch? d? b?o v? kh?n c?p)
+            cmd.fan_state = (cmd.gas_level > 1500) ? 1 : 0;
+
+            if (xActuatorQueue != NULL)
+            {
+                xQueueSendFromISR(xActuatorQueue, &cmd, &xHigherPriorityTaskWoken);
+                portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+            }
+        }
+    }
+}
+
+/**
+ * @brief Task x? lý hi?n th? TFT và di?u khi?n Relay Qu?t
+ */
+void Task_Actuator(void *pvParameters)
+{
+    ActuatorCommand_t cmd;
+    char strBuffer[20];
+
+    for (;;)
+    {
+        // Ch? vô th?i h?n d?n khi nh?n du?c d? li?u t? ng?t CAN
+        if (xQueueReceive(xActuatorQueue, &cmd, portMAX_DELAY) == pdPASS)
+        {
+            // 1. Ði?u khi?n Relay Qu?t (PB0)
+            if (cmd.fan_state == 1)
+            {
+                HAL_GPIO_WritePin(GPIOB, RELAY_FAN_Pin, GPIO_PIN_SET);   // Kích B?T
+                drawString(5, 35, "FAN : ON ", Font_7x10, TFT_GREEN, TFT_BLACK);
+            }
+            else
+            {
+                HAL_GPIO_WritePin(GPIOB, RELAY_FAN_Pin, GPIO_PIN_RESET); // Kích T?T
+                drawString(5, 35, "FAN : OFF", Font_7x10, TFT_WHITE, TFT_BLACK);
+            }
+
+            // 2. C?p nh?t các thông s? c?m bi?n lên màn hình TFT
+            sprintf(strBuffer, "TEMP: %2d C", cmd.temperature);
+            drawString(5, 55, strBuffer, Font_7x10, TFT_CYAN, TFT_BLACK);
+
+            sprintf(strBuffer, "HUM : %2d %%", cmd.humidity);
+            drawString(5, 75, strBuffer, Font_7x10, TFT_CYAN, TFT_BLACK);
+
+            sprintf(strBuffer, "GAS : %4d", cmd.gas_level);
+            // N?u gas cao thì in ch? d? c?nh báo
+            uint16_t gasColor = (cmd.gas_level > 1500) ? TFT_RED : TFT_WHITE;
+            drawString(5, 95, strBuffer, Font_7x10, gasColor, TFT_BLACK);
+        }
+    }
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */

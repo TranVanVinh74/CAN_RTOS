@@ -22,12 +22,17 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "stdio.h"
+#include "A7680C.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef struct {
+    uint8_t temperature;
+    uint8_t humidity;
+    uint16_t gas_raw;
+} SensorData_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -46,8 +51,11 @@ CAN_HandleTypeDef hcan;
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
+osThreadId defaultTaskHandle;
 /* USER CODE BEGIN PV */
-
+QueueHandle_t xGatewayQueue = NULL;
+TaskHandle_t xTaskGatewayHandle = NULL;
+const char *ALERT_PHONE = "0987654321";
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -59,12 +67,15 @@ static void MX_USART2_UART_Init(void);
 
 
 /* USER CODE BEGIN PFP */
-
+void Task_Gateway(void *pvParameters);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+int fputc(int ch, FILE *f) {
+    HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+    return ch;
+}
 /* USER CODE END 0 */
 
 /**
@@ -100,15 +111,53 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+  printf("\r\n=== NODE 3: TELEMETRY GATEWAY KHOI DONG ===\r\n");
+  HAL_GPIO_WritePin(A7680C_PWRKEY_GPIO_Port, A7680C_PWRKEY_Pin, GPIO_PIN_SET);
 
-/* USER CODE END 2 */
+  // 2. C?u hình Filter CAN nh?n ID 0x100 t? Node 1
+  CAN_FilterTypeDef canFilter;
+  canFilter.FilterBank = 0;
+  canFilter.FilterMode = CAN_FILTERMODE_IDMASK;
+  canFilter.FilterScale = CAN_FILTERSCALE_32BIT;
+  canFilter.FilterIdHigh = 0x0000;
+  canFilter.FilterIdLow = 0x0000;
+  canFilter.FilterMaskIdHigh = 0x0000;
+  canFilter.FilterMaskIdLow = 0x0000;
+  canFilter.FilterFIFOAssignment = CAN_RX_FIFO0;
+  canFilter.FilterActivation = ENABLE;
+  canFilter.SlaveStartFilterBank = 14;
+  HAL_CAN_ConfigFilter(&hcan, &canFilter);
+
+  // 3. Ch?y module CAN và b?t ng?t RX FIFO0
+  HAL_CAN_Start(&hcan);
+  HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
+  /* USER CODE END 2 */
+
+  /* USER CODE BEGIN RTOS_MUTEX */
+  /* add mutexes, ... */
+  /* USER CODE END RTOS_MUTEX */
+
+  /* USER CODE BEGIN RTOS_SEMAPHORES */
+  /* add semaphores, ... */
+  /* USER CODE END RTOS_SEMAPHORES */
+
+  /* USER CODE BEGIN RTOS_TIMERS */
+  /* start timers, add new ones, ... */
+  /* USER CODE END RTOS_TIMERS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
-  /* IPC objects will be added during integration. */
+  xGatewayQueue = xQueueCreate(10, sizeof(SensorData_t));
+  /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
 
+  /* Create the thread(s) */
+  /* definition and creation of defaultTask */
+
+
+
   /* USER CODE BEGIN RTOS_THREADS */
-  /* Application tasks will be added during integration. */
+  xTaskCreate(Task_Gateway, "GatewayTask", 512, NULL, 2, &xTaskGatewayHandle);
+  /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
 
   /* Start scheduler */
@@ -303,6 +352,127 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+/**
+ * @brief Ng?t nh?n d? li?u t? CAN Bus
+ */
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+    CAN_RxHeaderTypeDef rxHeader;
+    uint8_t rxData[8];
+    SensorData_t sensor;
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+    if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &rxHeader, rxData) == HAL_OK)
+    {
+        // B?t gói tin ID 0x100 c?a Node 1
+        if (rxHeader.StdId == 0x100 && rxHeader.DLC >= 4)
+        {
+            sensor.temperature = rxData[0];
+            sensor.humidity    = rxData[1];
+            sensor.gas_raw     = ((uint16_t)rxData[2] << 8) | rxData[3];
+
+            if (xGatewayQueue != NULL)
+            {
+                xQueueSendFromISR(xGatewayQueue, &sensor, &xHigherPriorityTaskWoken);
+                portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+            }
+        }
+    }
+}
+
+/**
+ * @brief G?i CAN Frame di?u khi?n xu?ng Node 2 (ID: 0x200)
+ */
+static void Send_Actuator_Command(uint8_t fan_state, SensorData_t *data)
+{
+    CAN_TxHeaderTypeDef txHeader;
+    uint8_t txData[8];
+    uint32_t txMailbox;
+
+    txHeader.StdId = 0x200;
+    txHeader.ExtId = 0x00;
+    txHeader.RTR = CAN_RTR_DATA;
+    txHeader.IDE = CAN_ID_STD;
+    txHeader.DLC = 5;
+    txHeader.TransmitGlobalTime = DISABLE;
+
+    txData[0] = fan_state;
+    txData[1] = data->temperature;
+    txData[2] = data->humidity;
+    txData[3] = (uint8_t)(data->gas_raw >> 8);
+    txData[4] = (uint8_t)(data->gas_raw & 0xFF);
+
+    if (HAL_CAN_GetTxMailboxesFreeLevel(&hcan) > 0)
+    {
+        HAL_CAN_AddTxMessage(&hcan, &txHeader, txData, &txMailbox);
+    }
+}
+
+/**
+ * @brief Task x? lý logic Gateway, g?i l?nh CAN và c?nh báo 4G
+ */
+void Task_Gateway(void *pvParameters)
+{
+    SensorData_t sensorData;
+    bool isAlertSent = false;
+    uint32_t lastAlertTime = 0;
+
+    // 1. Kh?i d?ng module SIM A7680C
+    A7680C_Init(&huart2, A7680C_PWRKEY_GPIO_Port, A7680C_PWRKEY_Pin);
+    printf("Dang bat nguon A7680C...\r\n");
+    A7680C_PowerOn();
+
+    if (A7680C_IsReady()) {
+        printf("A7680C da ket noi thanh cong!\r\n");
+    } else {
+        printf("Canh bao: A7680C khong phan hoi AT Command!\r\n");
+    }
+
+    for (;;)
+    {
+        if (xQueueReceive(xGatewayQueue, &sensorData, portMAX_DELAY) == pdPASS)
+        {
+            printf("[GATEWAY] Temp: %d C | Hum: %d %% | Gas: %d\r\n", 
+                   sensorData.temperature, sensorData.humidity, sensorData.gas_raw);
+
+            uint8_t fanCommand = 0;
+
+            // Ki?m tra ngu?ng rò r? khí gas nguy hi?m (> 1500)
+            if (sensorData.gas_raw > 1500)
+            {
+                fanCommand = 1; // B?t qu?t thông gió
+
+                // Co ch? ch?ng spam tin nh?n: cách nhau ít nh?t 60s
+                if (!isAlertSent || (HAL_GetTick() - lastAlertTime > 60000))
+                {
+                    printf(">>> PHAT HIEN RO RI KHI GAS! Dang gui SMS...\r\n");
+                    char smsMsg[120];
+                    sprintf(smsMsg, "CANH BAO RO RI KHI GAS!\nGas Level: %d\nTemp: %d C\nQuat da bat tu dong!", 
+                            sensorData.gas_raw, sensorData.temperature);
+
+                    if (A7680C_SendSMS(ALERT_PHONE, smsMsg)) {
+                        printf(">>> Gui SMS canh bao thanh cong!\r\n");
+                        isAlertSent = true;
+                        lastAlertTime = HAL_GetTick();
+                    } else {
+                        printf(">>> Gui SMS that bai!\r\n");
+                    }
+                }
+            }
+            else
+            {
+                fanCommand = 0; // T?t qu?t khi an toàn
+                if (sensorData.gas_raw < 1000) {
+                    isAlertSent = false; // Reset c? báo d?ng
+                }
+            }
+
+            // G?i b?n tin CAN 0x200 xu?ng Node 2
+            Send_Actuator_Command(fanCommand, &sensorData);
+        }
+    }
+}
+
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -312,6 +482,16 @@ static void MX_GPIO_Init(void)
   * @retval None
   */
 /* USER CODE END Header_StartDefaultTask */
+void StartDefaultTask(void const * argument)
+{
+  /* USER CODE BEGIN 5 */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END 5 */
+}
 
 /**
   * @brief  Period elapsed callback in non blocking mode
