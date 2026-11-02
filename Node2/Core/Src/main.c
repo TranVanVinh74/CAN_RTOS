@@ -22,12 +22,19 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "FreeRTOS.h"
+#include "task.h"
+#include "queue.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef struct {
+    uint8_t fan_state;
+    uint8_t temperature;
+    uint8_t humidity;
+    uint16_t gas_level;
+} ActuatorCommand_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -46,7 +53,24 @@ CAN_HandleTypeDef hcan;
 SPI_HandleTypeDef hspi1;
 
 /* USER CODE BEGIN PV */
+/* USER CODE BEGIN PV */
+QueueHandle_t xActuatorQueue = NULL;
+TaskHandle_t xTaskActuatorHandle = NULL;
 
+/* Du lieu da duoc task xu ly */
+volatile ActuatorCommand_t g_node2Debug = {0};
+
+/* Bien theo doi tren Watch */
+volatile uint32_t g_canRxCount = 0;
+volatile uint32_t g_canProcessedCount = 0;
+volatile uint32_t g_canQueueFullCount = 0;
+volatile uint32_t g_canInvalidCount = 0;
+volatile uint32_t g_canReadErrorCount = 0;
+volatile uint32_t g_canError = 0;
+
+/* 0: chua san sang; 1: dang init CAN; 2: dang nhan */
+volatile uint32_t g_canStage = 0;
+/* USER CODE END PV */
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -57,7 +81,7 @@ static void MX_SPI1_Init(void);
 
 
 /* USER CODE BEGIN PFP */
-
+void Task_Actuator(void *pvParameters);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -102,10 +126,25 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* IPC objects will be added during integration. */
+  xActuatorQueue = xQueueCreate(5, sizeof(ActuatorCommand_t));
+
+if (xActuatorQueue == NULL)
+{
+    Error_Handler();
+}
   /* USER CODE END RTOS_QUEUES */
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* Application tasks will be added during integration. */
+if (xTaskCreate(Task_Actuator,
+                "CAN_RX_Test",
+                256,
+                NULL,
+                2,
+                &xTaskActuatorHandle) != pdPASS)
+{
+    Error_Handler();
+}
   /* USER CODE END RTOS_THREADS */
 
   /* Start scheduler */
@@ -274,6 +313,110 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+/* USER CODE BEGIN 4 */
+
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+    CAN_RxHeaderTypeDef rxHeader;
+    uint8_t rxData[8];
+    ActuatorCommand_t cmd;
+    BaseType_t taskWoken = pdFALSE;
+
+    /* Doc het cac frame dang nam trong FIFO */
+    while (HAL_CAN_GetRxFifoFillLevel(hcan, CAN_RX_FIFO0) > 0U)
+    {
+        if (HAL_CAN_GetRxMessage(hcan,
+                                CAN_RX_FIFO0,
+                                &rxHeader,
+                                rxData) != HAL_OK)
+        {
+            g_canReadErrorCount++;
+            break;
+        }
+
+        /* Chi chap nhan frame du lieu standard cua Node 1 */
+        if (rxHeader.IDE != CAN_ID_STD ||
+            rxHeader.RTR != CAN_RTR_DATA ||
+            rxHeader.StdId != 0x100U ||
+            rxHeader.DLC != 4U)
+        {
+            g_canInvalidCount++;
+            continue;
+        }
+
+        cmd.temperature = rxData[0];
+        cmd.humidity = rxData[1];
+        cmd.gas_level =
+            ((uint16_t)rxData[2] << 8) | rxData[3];
+
+        /* Chi de xem tren Watch, chua dieu khien relay */
+        cmd.fan_state = (cmd.gas_level > 1500U) ? 1U : 0U;
+
+        g_canRxCount++;
+
+        if (xQueueSendFromISR(xActuatorQueue,
+                              &cmd,
+                              &taskWoken) != pdPASS)
+        {
+            g_canQueueFullCount++;
+        }
+    }
+
+    portYIELD_FROM_ISR(taskWoken);
+}
+
+void Task_Actuator(void *pvParameters)
+{
+    CAN_FilterTypeDef filter = {0};
+    ActuatorCommand_t cmd;
+
+    (void)pvParameters;
+    g_canStage = 1;
+
+    /* Nhan tat ca de test; kiem tra ID/DLC trong callback */
+    filter.FilterBank = 0;
+    filter.FilterMode = CAN_FILTERMODE_IDMASK;
+    filter.FilterScale = CAN_FILTERSCALE_32BIT;
+    filter.FilterIdHigh = 0;
+    filter.FilterIdLow = 0;
+    filter.FilterMaskIdHigh = 0;
+    filter.FilterMaskIdLow = 0;
+    filter.FilterFIFOAssignment = CAN_RX_FIFO0;
+    filter.FilterActivation = ENABLE;
+    filter.SlaveStartFilterBank = 14;
+
+    if (HAL_CAN_ConfigFilter(&hcan, &filter) != HAL_OK)
+    {
+        Error_Handler();
+    }
+
+    if (HAL_CAN_Start(&hcan) != HAL_OK)
+    {
+        Error_Handler();
+    }
+
+    if (HAL_CAN_ActivateNotification(
+            &hcan, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK)
+    {
+        Error_Handler();
+    }
+
+    g_canStage = 2;
+
+    for (;;)
+    {
+        if (xQueueReceive(xActuatorQueue,
+                          &cmd,
+                          pdMS_TO_TICKS(1000)) == pdPASS)
+        {
+            g_node2Debug = cmd;
+            g_canProcessedCount++;
+        }
+
+        g_canError = HAL_CAN_GetError(&hcan);
+    }
+}
+
 
 /* USER CODE END 4 */
 
