@@ -22,12 +22,25 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdbool.h>
+#include "DHT11.h"
+#include "MQ5.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
+typedef struct {
+    uint8_t temperature;
+    uint8_t humidity;
+    uint16_t gas_raw;
+} SensorData_t;
+// Interface Driver tổng quát
+typedef struct {
+    const char *name;
+    bool (*init)(void);
+    bool (*read)(void *out_data);
+} Sensor_Driver_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -47,8 +60,16 @@ CAN_HandleTypeDef hcan;
 
 TIM_HandleTypeDef htim2;
 
+osThreadId defaultTaskHandle;
 /* USER CODE BEGIN PV */
+volatile SensorData_t g_sensorDebug = {0};
+volatile uint32_t g_sensorStage = 0;
+volatile uint32_t g_sensorLoops = 0;
+volatile uint32_t g_dhtSuccessCount = 0;
+QueueHandle_t xSensorQueue = NULL;
 
+TaskHandle_t xTaskSensorHandle = NULL;
+TaskHandle_t xTaskCANTXHandle = NULL;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -57,16 +78,68 @@ static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_CAN_Init(void);
 static void MX_TIM2_Init(void);
+void StartDefaultTask(void const * argument);
+
+/* USER CODE BEGIN PFP */
+void Task_Sensor(void *pvParameters);
+void Task_CAN_TX(void *pvParameters);
+/* USER CODE END PFP */
+
+/* Private function prototypes -----------------------------------------------*/
+void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_ADC1_Init(void);
+static void MX_CAN_Init(void);
+static void MX_TIM2_Init(void);
+void StartDefaultTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
-
-
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static bool MQ5_Driver_Init(void) {
+    MQ5_Init(&hadc1);
+    return true;
+}
 
+static bool MQ5_Driver_Read(void *out_data) {
+    if (out_data == NULL) return false;
+    *(uint16_t *)out_data = MQ5_ReadAverage(8);
+    return true;
+}
+
+// --- ADAPTER CHO DHT11 ---
+static bool DHT11_Driver_Init(void) {
+    DHT11_Init(&htim2);
+    return true;
+}
+
+static bool DHT11_Driver_Read(void *out_data) {
+    if (out_data == NULL) return false;
+    return DHT11_Read((DHT11_Data_t *)out_data);
+}
+
+// --- KHAI BÁO CÁC DRIVER CỤ THỂ ---
+Sensor_Driver_t dev_mq5 = {
+    .name = "MQ-5 Gas Sensor",
+    .init = MQ5_Driver_Init,
+    .read = MQ5_Driver_Read
+};
+
+Sensor_Driver_t dev_dht11 = {
+    .name = "DHT11 Temp/Hum",
+    .init = DHT11_Driver_Init,
+    .read = DHT11_Driver_Read
+};
+
+// Gom tất cả vào một mảng thiết bị để quản lý tập trung
+#define TOTAL_SENSORS 2
+Sensor_Driver_t *sensor_bus[TOTAL_SENSORS] = {
+    &dev_mq5,
+    &dev_dht11
+};
 /* USER CODE END 0 */
 
 /**
@@ -102,15 +175,64 @@ int main(void)
   MX_CAN_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
+HAL_TIM_Base_Start(&htim2);// Bat timer 2
+for (int i = 0; i < TOTAL_SENSORS; i++) {
+      if (sensor_bus[i]->init != NULL) {
+          sensor_bus[i]->init();
+      }
+  }
+/*Cau hinh bo loc CAN */
+CAN_FilterTypeDef canFilterConfig;
+  canFilterConfig.FilterBank = 0;
+  canFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
+  canFilterConfig.FilterScale = CAN_FILTERSCALE_32BIT;
+  canFilterConfig.FilterIdHigh = 0x0000;
+  canFilterConfig.FilterIdLow = 0x0000;
+  canFilterConfig.FilterMaskIdHigh = 0x0000;
+  canFilterConfig.FilterMaskIdLow = 0x0000;
+  canFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO0;
+  canFilterConfig.FilterActivation = ENABLE;
+  canFilterConfig.SlaveStartFilterBank = 14;
+  HAL_CAN_ConfigFilter(&hcan, &canFilterConfig);
+  HAL_CAN_Start(&hcan);
+  HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
+  /* USER CODE END 2 */
 
-/* USER CODE END 2 */
+  /* USER CODE BEGIN RTOS_MUTEX */
+  /* add mutexes, ... */
+  /* USER CODE END RTOS_MUTEX */
+
+  /* USER CODE BEGIN RTOS_SEMAPHORES */
+  /* add semaphores, ... */
+  /* USER CODE END RTOS_SEMAPHORES */
+
+  /* USER CODE BEGIN RTOS_TIMERS */
+  /* start timers, add new ones, ... */
+  /* USER CODE END RTOS_TIMERS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
-  /* IPC objects will be added during integration. */
+  /* add queues, ... */
+  xSensorQueue = xQueueCreate(5, sizeof(SensorData_t));
   /* USER CODE END RTOS_QUEUES */
 
+  /* Create the thread(s) */
+  /* definition and creation of defaultTask */
+
+
   /* USER CODE BEGIN RTOS_THREADS */
-  /* Application tasks will be added during integration. */
+ 
+  xTaskCreate(Task_Sensor, "SensorTask", 256, NULL, 2, &xTaskSensorHandle);
+
+
+  xTaskCreate(Task_CAN_TX, "CANTXTask", 256, NULL, 3, &xTaskCANTXHandle);
+  /* USER CODE END RTOS_QUEUES */
+
+  /* Create the thread(s) */
+  /* definition and creation of defaultTask */
+
+
+  /* USER CODE BEGIN RTOS_THREADS */
+  /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
 
   /* Start scheduler */
@@ -335,7 +457,74 @@ HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 }
 
 /* USER CODE BEGIN 4 */
+void Task_Sensor(void *pvParameters)
+{
+    SensorData_t sensorData;
+    DHT11_Data_t dhtRaw;
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    const TickType_t xFrequency = pdMS_TO_TICKS(500);
 
+    for (;;)
+    {
+        // 1. Đọc dữ liệu khí gas thông qua Driver MQ-5
+        dev_mq5.read(&sensorData.gas_raw);
+
+        // 2. Đọc dữ liệu môi trường thông qua Driver DHT11
+        if (dev_dht11.read(&dhtRaw))
+        {
+            sensorData.temperature = (uint8_t)dhtRaw.Temperature;
+            sensorData.humidity    = (uint8_t)dhtRaw.Humidity;
+        }
+
+        // Cập nhật biến debug và đẩy vào CAN Queue
+        g_sensorDebug = sensorData;
+
+        if (xSensorQueue != NULL)
+        {
+            xQueueSend(xSensorQueue, &sensorData, pdMS_TO_TICKS(10));
+        }
+
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    }
+}
+
+/**
+ * @brief 
+ */
+void Task_CAN_TX(void *pvParameters)
+{
+    SensorData_t rxData;
+    CAN_TxHeaderTypeDef txHeader;
+    uint8_t txData[8];
+    uint32_t txMailbox;
+
+    // C?u h�nh khung truy?n CAN
+    txHeader.StdId = 0x100;              // CAN ID cho Node 1 Sensor
+    txHeader.ExtId = 0x00;
+    txHeader.RTR = CAN_RTR_DATA;         // Khung d? li?u ti�u chu?n
+    txHeader.IDE = CAN_ID_STD;          // Chu?n Standard (11-bit ID)
+    txHeader.DLC = 4;                   // Chi?u d�i d? li?u: 4 Bytes
+    txHeader.TransmitGlobalTime = DISABLE;
+
+    for (;;)
+    {
+        // Block v� th?i h?n cho t?i khi c� d? li?u m?i t? Task_Sensor
+        if (xQueueReceive(xSensorQueue, &rxData, portMAX_DELAY) == pdPASS)
+        {
+            // ��ng g�i Payload
+            txData[0] = rxData.temperature;
+            txData[1] = rxData.humidity;
+            txData[2] = (uint8_t)((rxData.gas_raw >> 8) & 0xFF); // Byte cao c?a ADC
+            txData[3] = (uint8_t)(rxData.gas_raw & 0xFF);        // Byte th?p c?a ADC
+
+            // Ki?m tra xem c� Mailbox tr?ng kh�ng tru?c khi truy?n
+            if (HAL_CAN_GetTxMailboxesFreeLevel(&hcan) > 0)
+            {
+                HAL_CAN_AddTxMessage(&hcan, &txHeader, txData, &txMailbox);
+            }
+        }
+    }
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */

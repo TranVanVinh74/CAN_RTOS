@@ -54,3 +54,11 @@ The system partitions data acquisition, localized human-machine interface (HMI)/
     - **High-Priority Ingestion (`Task_CAN_RX` / CAN RX0 ISR):** Captures incoming `0x100` broadcast frames into an RTOS message queue (`xGatewayQueue`) without frame drops or bus jitter.
     - **Processing & Telemetry Pipeline (`Task_Gateway_Process`):** Consumes queue packets, performs hazard threshold checking (`Gas_Raw > 1500`), dispatches CAN control frames (`0x200`) to Node 2, and handles cellular modem interactions.
 - **Cellular Interface:** SIMCom A7680C 4G LTE module interfaced via `USART2` (`PA2`/`PA3` @ 115200 baud) and GPIO for power sequencing (`PWRKEY`). Executes non-blocking AT command parsing for SMS emergency dispatch with rate-limiting / anti-spam logic (60-second cooldown interval).
+
+
+## Node 1 validation status
+
+- The user reported Node 1 on `ff` branch `feature/hal-timer-adc` working on hardware on 2026-11-02.
+- Node 1 application code is restored from the supplied `BTL HTN.zip`: sensor task, sensor queue, CAN transmit task, and debug variables.
+- Its executable logic matches that tested branch; differences are comments and unused declarations. Sensor drivers, peripheral configuration, and the Keil project are unchanged.
+- This commit has not been independently built or hardware-tested here.
