@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F103xB</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM3;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM3;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;..\Lib</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -563,6 +563,31 @@
               <FileName>port.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM3/port.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Lib</GroupName>
+          <Files>
+            <File>
+              <FileName>TFT.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Lib\TFT.h</FilePath>
+            </File>
+            <File>
+              <FileName>TFT.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Lib\TFT.c</FilePath>
+            </File>
+            <File>
+              <FileName>FONT.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Lib\FONT.c</FilePath>
+            </File>
+            <File>
+              <FileName>FONT.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Lib\FONT.h</FilePath>
             </File>
           </Files>
         </Group>

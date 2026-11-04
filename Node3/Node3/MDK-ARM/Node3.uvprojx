@@ -419,6 +419,11 @@
               <FileType>1</FileType>
               <FilePath>../Core/Src/stm32f1xx_hal_timebase_tim.c</FilePath>
             </File>
+            <File>
+              <FileName>A7680C.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Core\Src\A7680C.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
