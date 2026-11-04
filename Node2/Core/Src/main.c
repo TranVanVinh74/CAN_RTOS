@@ -1,22 +1,19 @@
 /* USER CODE BEGIN Header */
 /*
- * Node 2: CAN reception + ST7735 display
+ * Node 2: CAN + ST7735 + relay PB0
  *
- * TFT initialization:
- *   main(), before CAN and FreeRTOS scheduler.
+ * CAN standard data frame:
+ * ID 0x100, DLC 4
+ * Byte 0: temperature
+ * Byte 1: humidity
+ * Byte 2: gas high byte
+ * Byte 3: gas low byte
  *
- * CAN:
- *   Standard ID 0x100, DLC 4
- *   Byte 0: temperature
- *   Byte 1: humidity
- *   Byte 2: gas high byte
- *   Byte 3: gas low byte
- *
- * Only Task_Actuator updates TFT after scheduler starts.
+ * TFT initialized once before scheduler.
+ * Relay and TFT updated by Task_Actuator.
  */
 /* USER CODE END Header */
 
-/* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
 
@@ -28,6 +25,24 @@
 #include <stdio.h>
 /* USER CODE END Includes */
 
+/* USER CODE BEGIN PD */
+
+/* 1: LOW = ON; 0: HIGH = ON. */
+#define RELAY_ACTIVE_LOW    0
+
+#define GAS_FAN_ON          2000U
+#define GAS_FAN_OFF         2000U
+
+#if RELAY_ACTIVE_LOW
+#define RELAY_ON_LEVEL      GPIO_PIN_RESET
+#define RELAY_OFF_LEVEL     GPIO_PIN_SET
+#else
+#define RELAY_ON_LEVEL      GPIO_PIN_SET
+#define RELAY_OFF_LEVEL     GPIO_PIN_RESET
+#endif
+
+/* USER CODE END PD */
+
 /* USER CODE BEGIN PTD */
 typedef struct
 {
@@ -38,7 +53,6 @@ typedef struct
 } ActuatorCommand_t;
 /* USER CODE END PTD */
 
-/* Private variables ---------------------------------------------------------*/
 CAN_HandleTypeDef hcan;
 SPI_HandleTypeDef hspi1;
 
@@ -47,6 +61,11 @@ QueueHandle_t xActuatorQueue = NULL;
 TaskHandle_t xTaskActuatorHandle = NULL;
 
 volatile ActuatorCommand_t g_node2Debug = {0};
+
+/* Commanded relay state: 0 OFF, 1 ON. */
+volatile uint32_t g_relayState = 0;
+volatile uint32_t g_relayPinLevel = 0;
+volatile uint32_t g_relaySwitchCount = 0;
 
 /* CAN debug */
 volatile uint32_t g_canStage = 0;
@@ -60,37 +79,28 @@ volatile uint32_t g_canError = 0;
 
 /*
  * TFT:
- * 0  = not initialized
- * 1  = initialization in progress
- * 2  = waiting screen drawn
- * 3  = CAN data drawn
- * 99 = SPI error
+ * 0 not initialized
+ * 1 initializing
+ * 2 waiting screen drawn
+ * 3 CAN data drawn
+ * 99 SPI error
  */
 volatile uint32_t g_tftStage = 0;
 
 /*
  * Fatal error:
- * 0  = no fatal error
- * 1  = oscillator configuration
- * 2  = clock configuration
- * 3  = SPI initialization
- * 4  = CAN initialization
- * 5  = queue allocation
- * 6  = task allocation
- * 7  = scheduler returned unexpectedly
- * 8  = CAN filter configuration
- * 9  = CAN start
- * 10 = CAN notification activation
+ * 1 oscillator; 2 clock; 3 SPI; 4 CAN init;
+ * 5 queue allocation; 6 task allocation;
+ * 7 scheduler returned;
+ * 8 CAN filter; 9 CAN start; 10 CAN notification.
  */
 volatile uint32_t g_errorCode = 0;
 
-/* Defined in TFT.c */
 extern volatile uint32_t g_tftSPIErrors;
 extern volatile uint32_t g_tftSPIStatus;
 extern volatile uint32_t g_tftSPIHalError;
 /* USER CODE END PV */
 
-/* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_CAN_Init(void);
@@ -99,17 +109,55 @@ static void MX_SPI1_Init(void);
 /* USER CODE BEGIN PFP */
 void Task_Actuator(void *pvParameters);
 
+static void Relay_Set(uint8_t on);
+static void Relay_UpdateFromGas(uint16_t gas);
 static void TFT_DrawInitialScreen(void);
 static void TFT_UpdateValues(const ActuatorCommand_t *cmd);
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
 
+static void Relay_Set(uint8_t on)
+{
+    uint32_t nextState;
+    GPIO_PinState level;
+
+    nextState = (on != 0U) ? 1U : 0U;
+    level = (nextState != 0U)
+            ? RELAY_ON_LEVEL
+            : RELAY_OFF_LEVEL;
+
+    /* Relay is explicitly on PB0. */
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, level);
+
+    if (g_relayState != nextState)
+    {
+        g_relaySwitchCount++;
+    }
+
+    g_relayState = nextState;
+
+    /* Output latch value, not physical contact feedback. */
+    g_relayPinLevel =
+        ((GPIOB->ODR & GPIO_PIN_0) != 0U) ? 1U : 0U;
+}
+
+static void Relay_UpdateFromGas(uint16_t gas)
+{
+    if (gas > GAS_FAN_ON)
+    {
+        Relay_Set(1);
+    }
+    else
+    {
+        Relay_Set(0);
+    }
+}
+
 static void TFT_DrawInitialScreen(void)
 {
     g_tftStage = 1;
 
-    /* Initialize exactly once, before scheduler starts. */
     initTFT(&hspi1);
 
     if (g_tftSPIErrors != 0U)
@@ -124,7 +172,8 @@ static void TFT_DrawInitialScreen(void)
                Font_7x10, TFT_YELLOW, TFT_BLACK);
 
     drawLine(0, 22, 127, 22, TFT_WHITE);
-drawString(5, 35, "TEMP: --- C",
+
+    drawString(5, 35, "TEMP: --- C",
                Font_7x10, TFT_CYAN, TFT_BLACK);
 
     drawString(5, 55, "HUM : --- %",
@@ -133,8 +182,8 @@ drawString(5, 35, "TEMP: --- C",
     drawString(5, 75, "GAS : -----",
                Font_7x10, TFT_WHITE, TFT_BLACK);
 
-    drawString(5, 95, "FAN : ---",
-               Font_7x10, TFT_WHITE, TFT_BLACK);
+    drawString(5, 95, "FAN : OFF",
+               Font_7x10, TFT_GREEN, TFT_BLACK);
 
     drawString(5, 125, "WAIT CAN... ",
                Font_7x10, TFT_YELLOW, TFT_BLACK);
@@ -152,10 +201,6 @@ static void TFT_UpdateValues(const ActuatorCommand_t *cmd)
         return;
     }
 
-    /*
-     * Fixed field widths overwrite previous digits.
-     * Do not clear the whole screen on each CAN message.
-     */
     snprintf(text, sizeof(text), "TEMP: %3u C",
              (unsigned int)cmd->temperature);
 
@@ -199,19 +244,16 @@ int main(void)
     SystemClock_Config();
 
     MX_GPIO_Init();
+
+    /* USER CODE BEGIN InitRelay */
+    Relay_Set(0);
+    /* USER CODE END InitRelay */
+
     MX_SPI1_Init();
 
     /* USER CODE BEGIN 2 */
-
-    /*
-     * Keep the initialization order that displayed
-     * Hello World successfully in your latest test.
-     */
     TFT_DrawInitialScreen();
-
-    /* Initialize CAN only after TFT is ready. */
     MX_CAN_Init();
-
     /* USER CODE END 2 */
 
     /* USER CODE BEGIN RTOS_QUEUES */
@@ -239,22 +281,19 @@ int main(void)
 
     osKernelStart();
 
-    /* USER CODE BEGIN WHILE */
-    /* Successful scheduler start does not return. */
     g_errorCode = 7;
     Error_Handler();
 
     while (1)
     {
     }
-    /* USER CODE END WHILE */
 }
 
 void SystemClock_Config(void)
 {
     RCC_OscInitTypeDef RCC_OscInitStruct = {0};
     RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-/* Same clock configuration as your working Node 2. */
+
     RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
     RCC_OscInitStruct.HSEState = RCC_HSE_ON;
     RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
@@ -290,12 +329,9 @@ void SystemClock_Config(void)
 
 static void MX_CAN_Init(void)
 {
-    /* USER CODE BEGIN CAN_Init 0 */
-    /* USER CODE END CAN_Init 0 */
-
     hcan.Instance = CAN1;
 
-    /* 36 MHz / (4 * (1 + 15 + 2)) = 500 kbit/s. */
+    /* 500 kbit/s with APB1 = 36 MHz. */
     hcan.Init.Prescaler = 4;
     hcan.Init.Mode = CAN_MODE_NORMAL;
     hcan.Init.SyncJumpWidth = CAN_SJW_1TQ;
@@ -315,17 +351,10 @@ static void MX_CAN_Init(void)
         g_errorCode = 4;
         Error_Handler();
     }
-
-    /* USER CODE BEGIN CAN_Init 2 */
-    /* USER CODE END CAN_Init 2 */
 }
 
 static void MX_SPI1_Init(void)
 {
-    /* USER CODE BEGIN SPI1_Init 0 */
-    /* USER CODE END SPI1_Init 0 */
-
-    /* Same SPI configuration as your working TFT test. */
     hspi1.Instance = SPI1;
     hspi1.Init.Mode = SPI_MODE_MASTER;
     hspi1.Init.Direction = SPI_DIRECTION_2LINES;
@@ -333,10 +362,7 @@ static void MX_SPI1_Init(void)
     hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
     hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
     hspi1.Init.NSS = SPI_NSS_SOFT;
-
-    /* 72 MHz / 32 = 2.25 MHz. */
     hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
-
     hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
     hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
     hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -347,25 +373,31 @@ static void MX_SPI1_Init(void)
         g_errorCode = 3;
         Error_Handler();
     }
-
-    /* USER CODE BEGIN SPI1_Init 2 */
-    /* USER CODE END SPI1_Init 2 */
 }
 
 static void MX_GPIO_Init(void)
 {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
 
-    /* USER CODE BEGIN MX_GPIO_Init_1 */
-/* USER CODE END MX_GPIO_Init_1 */
-
-    /* Preserve GPIO configuration from your working file. */
     __HAL_RCC_GPIOD_CLK_ENABLE();
     __HAL_RCC_GPIOA_CLK_ENABLE();
     __HAL_RCC_GPIOB_CLK_ENABLE();
 
+    /*
+     * Load the OFF level before configuring PB0 as output.
+     */
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, RELAY_OFF_LEVEL);
+
+    GPIO_InitStruct.Pin = GPIO_PIN_0;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+    /* Preserve existing TFT pin definitions. */
     HAL_GPIO_WritePin(GPIOB,
-                      RELAY_FAN_Pin | TFT_CS_Pin | TFT_RST_Pin,
+                      TFT_CS_Pin | TFT_RST_Pin,
                       GPIO_PIN_SET);
 
     HAL_GPIO_WritePin(TFT_DC_GPIO_Port,
@@ -373,19 +405,13 @@ static void MX_GPIO_Init(void)
                       GPIO_PIN_RESET);
 
     GPIO_InitStruct.Pin =
-        RELAY_FAN_Pin |
-        TFT_CS_Pin |
-        TFT_DC_Pin |
-        TFT_RST_Pin;
+        TFT_CS_Pin | TFT_DC_Pin | TFT_RST_Pin;
 
     GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
 
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-    /* USER CODE BEGIN MX_GPIO_Init_2 */
-    /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
@@ -403,8 +429,8 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
     }
 
     /*
-     * ISR only reads CAN and queues data.
-     * Never draw TFT or call HAL_Delay here.
+     * ISR only decodes CAN and queues data.
+     * Relay hysteresis and TFT rendering run in the task.
      */
     while (HAL_CAN_GetRxFifoFillLevel(hcan, CAN_RX_FIFO0) > 0U)
     {
@@ -433,8 +459,8 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
             ((uint16_t)rxData[2] << 8) |
             (uint16_t)rxData[3];
 
-        /* Display/debug only; no relay GPIO writes. */
-        cmd.fan_state = (cmd.gas_level > 1500U) ? 1U : 0U;
+        /* Actual fan_state is assigned by the task. */
+        cmd.fan_state = 0;
 
         g_canRxCount++;
 
@@ -459,22 +485,18 @@ void Task_Actuator(void *pvParameters)
 
     (void)pvParameters;
 
-    /*
-     * TFT has already been initialized in main().
-     * Do not call initTFT() again here.
-     */
     g_canStage = 1;
 
     filter.FilterBank = 0;
     filter.FilterMode = CAN_FILTERMODE_IDMASK;
     filter.FilterScale = CAN_FILTERSCALE_32BIT;
 
-    /* Receive all frames; validate ID/DLC in callback. */
     filter.FilterIdHigh = 0;
     filter.FilterIdLow = 0;
     filter.FilterMaskIdHigh = 0;
     filter.FilterMaskIdLow = 0;
-filter.FilterFIFOAssignment = CAN_RX_FIFO0;
+
+    filter.FilterFIFOAssignment = CAN_RX_FIFO0;
     filter.FilterActivation = ENABLE;
     filter.SlaveStartFilterBank = 14;
 
@@ -492,10 +514,6 @@ filter.FilterFIFOAssignment = CAN_RX_FIFO0;
         Error_Handler();
     }
 
-    /*
-     * Queue exists and scheduler is running before
-     * enabling CAN RX notification.
-     */
     if (HAL_CAN_ActivateNotification(
             &hcan, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK)
     {
@@ -512,13 +530,23 @@ filter.FilterFIFOAssignment = CAN_RX_FIFO0;
                           &cmd,
                           pdMS_TO_TICKS(1000)) == pdPASS)
         {
-            /* Update debug data even if TFT reports an error. */
+            /*
+             * Apply relay output before drawing TFT.
+             * A TFT error does not prevent relay updates.
+             */
+            Relay_UpdateFromGas(cmd.gas_level);
+
+            cmd.fan_state = (uint8_t)g_relayState;
+
             g_node2Debug = cmd;
             g_canProcessedCount++;
 
             TFT_UpdateValues(&cmd);
         }
 
+        /*
+         * On timeout, keep the last relay state.
+         */
         g_taskLoops++;
         g_canError = HAL_CAN_GetError(&hcan);
     }
@@ -526,10 +554,6 @@ filter.FilterFIFOAssignment = CAN_RX_FIFO0;
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-    /*
-     * TIM4 is the HAL timebase in this Node 2 project.
-     * Preserve it for HAL_Delay and HAL SPI timeouts.
-     */
     if (htim->Instance == TIM4)
     {
         HAL_IncTick();
@@ -540,22 +564,17 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 void Error_Handler(void)
 {
-    /* USER CODE BEGIN Error_Handler_Debug */
     __disable_irq();
 
     while (1)
     {
-        /* Inspect g_errorCode in Watch. */
     }
-    /* USER CODE END Error_Handler_Debug */
 }
 
 #ifdef USE_FULL_ASSERT
 void assert_failed(uint8_t *file, uint32_t line)
 {
-    /* USER CODE BEGIN 6 */
     (void)file;
     (void)line;
-    /* USER CODE END 6 */
 }
 #endif

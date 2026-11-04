@@ -33,8 +33,8 @@
 /* USER CODE BEGIN PD */
 #define ALERT_PHONE             "0399136893"
 
-#define GAS_ALERT_ON            1500U
-#define GAS_ALERT_OFF           1000U
+#define GAS_ALERT_ON            2000U
+#define GAS_ALERT_OFF           2000U
 
 #define CAN_DATA_TIMEOUT_MS     3000U
 #define CALL_DURATION_MS        30000U
