@@ -23,6 +23,7 @@ Release/
 # STM32CubeIDE workspace and per-user settings
 .metadata/
 .settings/
+*.launch
 
 # CubeMX backups of overwritten generated files
 *_save
