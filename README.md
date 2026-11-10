@@ -1,56 +1,63 @@
+# Distributed CAN Monitoring and Central Alert System (Automotive CAN Gateway)
 
-# Distributed Industrial Safety & Environmental Monitoring System via CAN Bus & 4G LTE Gateway
+Three STM32 ECUs on one CAN bus, coordinated by FreeRTOS, that monitor gas, temperature and humidity, drive a ventilation fan and raise alerts over the cellular network.
 
-A real-time, distributed multi-node embedded system designed for industrial environmental monitoring, autonomous hazard mitigation, and cellular telemetry. The system utilizes deterministic **CAN 2.0A bus (500 kbps)** communication across a homogeneous network of **STM32F103C8T6 (ARM Cortex-M3)** microcontrollers scheduled under **FreeRTOS**.
+A sensor ECU broadcasts its readings on the bus. A display and actuator ECU shows them on a TFT and switches the fan; a cellular gateway calls a phone when the gas level is too high. Each receiving ECU decides on its own from the same frame, so no node depends on another to act.
 
-## System Architecture
+This is a prototype: gas is a raw ADC reading, not a calibrated concentration, and the system is not a certified gas detector.
 
-```
-                  ┌──────────────────────────────────────────────┐
-                  │          CAN Bus Backbone (500 kbps)         │
-                  │  (Differential CANH / CANL + 120Ω Split RT) │
-                  └──────┬──────────────────────┬───────────┬────┘
-                         │                      │           │
-                         ▼                      ▼           ▼
-                  ┌──────────────┐      ┌──────────────┐  ┌──────────────┐
-                  │    Node 1    │      │    Node 2    │  │    Node 3    │
-                  │ (Sensor ECU) │      │(Actuator ECU)│  │  (Gateway)   │
-                  │ STM32F103C8T6│      │ STM32F103C8T6│  │ STM32F103C8T6│
-                  └──────────────┘      └──────────────┘  └──────┬───────┘
-                                                                 │ USART2 (AT)
-                                                                 ▼
-                                                          ┌──────────────┐
-                                                          │ SIMCom A7680C│
-                                                          │   (4G LTE)   │
-                                                          └──────────────┘
+## System overview
+
+```mermaid
+flowchart LR
+    S["Gas sensor + DHT11"] --> N1["Node 1<br/>Sensor ECU"]
+    N1 -- "CAN 0x100 every 500 ms" --> BUS[["CAN bus<br/>500 kbit/s"]]
+    BUS --> N2["Node 2<br/>Display & Actuator ECU"]
+    BUS --> N3["Node 3<br/>Cellular Alert Gateway"]
+    N2 --> TFT["TFT display"]
+    N2 --> FAN["Relay + fan"]
+    N3 --> MDM["A7680C modem"] --> PHONE["Alert call"]
 ```
 
-The system partitions data acquisition, localized human-machine interface (HMI)/actuation, and telemetry across three dedicated STM32 nodes:
+| ECU | Role |
+|---|---|
+| Node 1 · Sensor ECU | Reads the MQ-5 gas sensor and DHT11, broadcasts one frame every 500 ms |
+| Node 2 · Display & Actuator ECU | Shows readings and fan state on an ST7735 TFT, turns the fan on when gas exceeds the threshold |
+| Node 3 · Cellular Alert Gateway | Checks that data is fresh, calls a phone through the A7680C modem, limits call rate and length |
 
-### 1. Node 1: Sensor Acquisition ECU (STM32F103C8T6)
+## Features
 
-- **Core:** ARM Cortex-M3 @ 72 MHz.
-- **Sensing:**
-    - **DHT11:** 1-Wire protocol with critical-section microsecond edge capture and FreeRTOS non-blocking wake signals.
-    - **MQ-5:** Analog gas sensor sampled via 12-bit ADC with an 8-sample moving average filter.
-- **Firmware:** FreeRTOS dual-task architecture (`Task_Sensor` sampling every 500 ms $\rightarrow$ thread-safe `xQueue` $\rightarrow$ `Task_CAN_TX`).
-- **CAN Transceiver:** SN65HVD230 / VP230 (3.3V).
-- **CAN Frame Output:** `StdId = 0x100`, DLC = 4 (`[Temp, Hum, Gas_Raw_MSB, Gas_Raw_LSB]`).
+- STM32F103C8T6 ECUs running FreeRTOS, linked by Classical CAN at 500 kbit/s.
+- Interrupt-driven CAN reception feeding FreeRTOS queues; slow work (display, modem) stays in tasks.
+- Automatic ventilation from the gas threshold.
+- Cellular voice alert with freshness check, 60 s minimum interval between calls and 30 s call limit.
 
-### 2. Node 2: Local Actuator & Display ECU (STM32F103C8T6)
+## Repository structure
 
-- **Core:** ARM Cortex-M3 @ 72 MHz.
-- **Actuation:** Relay channel driving a 5V exhaust ventilation fan via push-pull GPIO (`PB0`).
-- **HMI / Display:** 1.8" ST7735 TFT Display ($128 \times 160$ RGB565) driven by high-speed SPI1 (18 MHz) using bare-metal atomic register writes (`BSRR`) and a custom $7 \times 10$ ASCII font engine.
-- **Dual-Tier Control Logic:**
-    - **Command Mode:** Listens to Gateway actuation frame `0x200` to toggle relay and refresh sensor telemetry.
-    - **Autonomous Edge Fail-Safe:** Directly monitors `0x100` broadcast frames from Node 1. If gas raw ADC exceeds `1500` and Gateway response is missing, the node independently activates the exhaust fan.
+| Folder | Content |
+|---|---|
+| `node1-sensor/` | Sensor ECU firmware |
+| `node2-actuator/` | Display & actuator ECU firmware |
+| `node3-gateway/` | Cellular alert gateway firmware |
 
-### 3. Node 3: Telemetry & LTE Gateway ECU (STM32F103C8T6)
+Each folder is an STM32CubeIDE project with its STM32CubeMX `.ioc` file, STM32 HAL and FreeRTOS.
 
-- **Core:** ARM Cortex-M3 @ 72 MHz.
-- **CAN Interface:** Native on-chip bxCAN controller with hardware acceptance filtering @ 500 kbps, interfaced via VP230 / SN65HVD230 transceiver.
-- **Firmware & RTOS Task Architecture:**
-    - **High-Priority Ingestion (`Task_CAN_RX` / CAN RX0 ISR):** Captures incoming `0x100` broadcast frames into an RTOS message queue (`xGatewayQueue`) without frame drops or bus jitter.
-    - **Processing & Telemetry Pipeline (`Task_Gateway_Process`):** Consumes queue packets, performs hazard threshold checking (`Gas_Raw > 1500`), dispatches CAN control frames (`0x200`) to Node 2, and handles cellular modem interactions.
-- **Cellular Interface:** SIMCom A7680C 4G LTE module interfaced via `USART2` (`PA2`/`PA3` @ 115200 baud) and GPIO for power sequencing (`PWRKEY`). Executes non-blocking AT command parsing for SMS emergency dispatch with rate-limiting / anti-spam logic (60-second cooldown interval).
+## Getting started
+
+Hardware: three STM32F103C8T6 boards with SN65HVD230 CAN transceivers, an MQ-5 gas sensor, a DHT11, an ST7735 TFT, a relay with a 5 V fan, a SIMCom A7680C modem with SIM, and an ST-Link V2.
+
+1. Install STM32CubeIDE 1.18.1 and import the three projects with **File → Import → Existing Projects into Workspace**.
+2. Set `ALERT_PHONE` in Node 3's `main.c` to the number that should receive alerts.
+3. Build each project and flash it to its board with the ST-Link.
+
+Terminate the CAN bus with 120 Ω at both ends. Do not regenerate code from the `.ioc` files yet: `main.c` still holds tested changes outside the `USER CODE` blocks.
+
+## Limitations
+
+- One threshold for on and off, so the fan can chatter around it.
+- If CAN data stops, the fan keeps its last state.
+- Node 3 misses most modem replies, so every call runs to the 30 s limit.
+
+## License
+
+The firmware written for this project is released under the MIT License (see `LICENSE`). STM32 HAL, CMSIS and FreeRTOS keep their own licenses, included in their folders.

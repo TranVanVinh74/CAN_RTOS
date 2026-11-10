@@ -1,29 +1,61 @@
-# Build outputs
+# Firmware images and object files
 *.o
 *.obj
+*.a
+*.lib
 *.elf
 *.axf
 *.hex
 *.bin
+*.srec
 *.map
 *.lst
 *.list
 *.d
-*.crf
-*.htm
-*.build_log.htm
+*.su
+*.cyclo
 
 # Build directories
 build/
 Debug/
 Release/
-Objects/
-Listings/
 
-# Keil personal settings
-*.uvguix.*
-*.uvoptx
-*.uvopt
+# STM32CubeIDE workspace and per-user settings
+.metadata/
+.settings/
+*.launch
+
+# CubeMX backups of overwritten generated files
+*_save
 *.bak
-*.dep
 *.tmp
+
+# Python tools
+__pycache__/
+*.pyc
+.venv/
+
+# Personal editor settings
+.vscode/
+.idea/
+*~
+*.swp
+
+# Operating system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local secrets
+app_secrets.h
+
+# Local project notes and logs
+/__log/
+/logs/
+/docs/
+/rules/
+
+# AI assistant files
+CLAUDE.md
+.claude/
+AGENTS.md
