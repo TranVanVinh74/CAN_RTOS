@@ -3,8 +3,8 @@
  * Auto generated Run-Time-Environment Configuration File
  *      *** Do not modify ! ***
  *
- * Project: 'Node2' 
- * Target:  'Node2' 
+ * Project: 'node3-gateway' 
+ * Target:  'node3-gateway' 
  */
 
 #ifndef RTE_COMPONENTS_H

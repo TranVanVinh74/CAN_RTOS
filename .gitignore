@@ -15,7 +15,7 @@
 *.su
 
 # Keil MDK build output
-*/MDK-ARM/Node[0-9]/
+*/MDK-ARM/node[0-9]-*/
 *.crf
 *.dep
 *.lnp

@@ -97,21 +97,21 @@ The checked-in projects target ARM Compiler 5. Switching to ARM Compiler 6 requi
 
 | Path | Purpose |
 |---|---|
-| `Node1/Core/Src/main.c` | Acquisition tasks and CAN transmitter |
-| `Node1/Core/Inc/` | Node 1 application and HAL configuration headers |
-| `Node1/Lib/DHT11.c`, `DHT11.h` | DHT11 driver |
-| `Node1/Lib/MQ5.c`, `MQ5.h` | ADC-based gas driver |
-| `Node1/MDK-ARM/Node1.uvprojx` | Node 1 Keil project |
-| `Node2/Core/Src/main.c` | CAN receiver, TFT rendering, relay logic |
-| `Node2/Lib/TFT.c`, `TFT.h` | ST7735 driver |
-| `Node2/Lib/FONT.c`, `FONT.h` | Bitmap font definitions |
-| `Node2/MDK-ARM/Node2.uvprojx` | Node 2 Keil project |
-| `Node3/Node3/Core/Src/main.c` | Integrated CAN/cellular gateway |
-| `Node3/Node3/Core/Src/A7680C.c` | A7680C helper library |
-| `Node3/Node3/Core/Inc/A7680C.h` | A7680C library interface |
-| `Node3/Node3/MDK-ARM/Node3.uvprojx` | Node 3 Keil project |
+| `node1-sensor/Core/Src/main.c` | Acquisition tasks and CAN transmitter |
+| `node1-sensor/Core/Inc/` | Node 1 application and HAL configuration headers |
+| `node1-sensor/Lib/DHT11.c`, `DHT11.h` | DHT11 driver |
+| `node1-sensor/Lib/MQ5.c`, `MQ5.h` | ADC-based gas driver |
+| `node1-sensor/MDK-ARM/node1-sensor.uvprojx` | Node 1 Keil project |
+| `node2-actuator/Core/Src/main.c` | CAN receiver, TFT rendering, relay logic |
+| `node2-actuator/Lib/TFT.c`, `TFT.h` | ST7735 driver |
+| `node2-actuator/Lib/FONT.c`, `FONT.h` | Bitmap font definitions |
+| `node2-actuator/MDK-ARM/node2-actuator.uvprojx` | Node 2 Keil project |
+| `node3-gateway/Core/Src/main.c` | Integrated CAN/cellular gateway |
+| `node3-gateway/Core/Src/A7680C.c` | A7680C helper library |
+| `node3-gateway/Core/Inc/A7680C.h` | A7680C library interface |
+| `node3-gateway/MDK-ARM/node3-gateway.uvprojx` | Node 3 Keil project |
 
-Each node also includes `Drivers`, `Middlewares`, CubeMX configuration, startup code, and HAL interrupt/timebase support. **Node 3 has a nested `Node3/Node3` directory; this is the actual project path.** Its modem library is under `Core/Src` and `Core/Inc`, not a separate `Lib` directory.
+Each node also includes `Drivers`, `Middlewares`, CubeMX configuration, startup code, and HAL interrupt/timebase support. Node 3's modem library is under `Core/Src` and `Core/Inc`, not a separate `Lib` directory.
 
 Some older README/workflow notes describe the initial skeleton stage. The integrated behavior documented here is tied to the baseline commit above.
 
@@ -169,7 +169,7 @@ Use a DHT11 data pull-up appropriate for a 3.3 V STM32 interface; some modules a
 
 PA6 is configured as SPI1 MISO but is not needed for this write-only display connection. SPI1 uses mode 0, 8-bit transfers, software NSS, MSB first, and a divide-by-32 prescaler: 2.25 MHz with a 72 MHz SPI peripheral clock.
 
-**PB0 is reserved for the relay in this integrated version.** Earlier standalone display tests used different reset wiring. Follow `Node2/Core/Inc/main.h` and `Node2/Lib/TFT.h` in the checked-out version; both currently select PB11 for TFT reset. The macros in `TFT.h` directly select GPIO bits, so changing only `main.h` is insufficient if the pin assignment is changed later.
+**PB0 is reserved for the relay in this integrated version.** Earlier standalone display tests used different reset wiring. Follow `node2-actuator/Core/Inc/main.h` and `node2-actuator/Lib/TFT.h` in the checked-out version; both currently select PB11 for TFT reset. The macros in `TFT.h` directly select GPIO bits, so changing only `main.h` is insufficient if the pin assignment is changed later.
 
 ### Node 2 — relay and 5 V fan
 
@@ -314,7 +314,7 @@ Call attempts are limited to one per 60 seconds, measured from the start of each
 
 ## Thresholds and configuration
 
-### Node 2 — `Node2/Core/Src/main.c`
+### Node 2 — `node2-actuator/Core/Src/main.c`
 
 ```c
 #define RELAY_ACTIVE_LOW    0
@@ -326,7 +326,7 @@ Current relay decisions are **gas > 2000 → ON**, otherwise **OFF**, as impleme
 
 `RELAY_ACTIVE_LOW = 0` selects HIGH-to-activate. Use `1` only for hardware that requires LOW-to-activate.
 
-### Node 3 — `Node3/Node3/Core/Src/main.c`
+### Node 3 — `node3-gateway/Core/Src/main.c`
 
 ```c
 #define ALERT_PHONE             "<recipient phone number>"
@@ -376,9 +376,9 @@ git pull --ff-only origin develop
 
 | Board | Project |
 |---|---|
-| Node 1 | `Node1/MDK-ARM/Node1.uvprojx` |
-| Node 2 | `Node2/MDK-ARM/Node2.uvprojx` |
-| Node 3 | `Node3/Node3/MDK-ARM/Node3.uvprojx` |
+| Node 1 | `node1-sensor/MDK-ARM/node1-sensor.uvprojx` |
+| Node 2 | `node2-actuator/MDK-ARM/node2-actuator.uvprojx` |
+| Node 3 | `node3-gateway/MDK-ARM/node3-gateway.uvprojx` |
 
 Select the recorded ARM Compiler 5 toolchain and install the corresponding STM32F1 device pack. Check source/include entries if libraries were moved locally. `TFT.c`, `FONT.c`, and `A7680C.c` must be included in their corresponding projects.
 

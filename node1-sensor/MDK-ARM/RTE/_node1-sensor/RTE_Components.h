@@ -3,8 +3,8 @@
  * Auto generated Run-Time-Environment Configuration File
  *      *** Do not modify ! ***
  *
- * Project: 'Node3' 
- * Target:  'Node3' 
+ * Project: 'node1-sensor' 
+ * Target:  'node1-sensor' 
  */
 
 #ifndef RTE_COMPONENTS_H

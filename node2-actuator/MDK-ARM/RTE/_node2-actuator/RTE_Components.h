@@ -3,8 +3,8 @@
  * Auto generated Run-Time-Environment Configuration File
  *      *** Do not modify ! ***
  *
- * Project: 'Node1' 
- * Target:  'Node1' 
+ * Project: 'node2-actuator' 
+ * Target:  'node2-actuator' 
  */
 
 #ifndef RTE_COMPONENTS_H
