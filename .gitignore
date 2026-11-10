@@ -1,17 +1,34 @@
-# Build outputs
+# Firmware images and object files
 *.o
 *.obj
+*.a
+*.lib
 *.elf
 *.axf
 *.hex
 *.bin
+*.srec
 *.map
 *.lst
 *.list
 *.d
+*.su
+
+# Keil MDK build output
+*/MDK-ARM/Node[0-9]/
 *.crf
+*.dep
+*.lnp
+*.sct
+*.iex
 *.htm
 *.build_log.htm
+*.__i
+*._ia
+*.tra
+*.fed
+*.l1p
+*.l2p
 
 # Build directories
 build/
@@ -20,10 +37,42 @@ Release/
 Objects/
 Listings/
 
-# Keil personal settings
+# Keil personal settings and logs
 *.uvguix.*
-*.uvoptx
 *.uvopt
 *.bak
-*.dep
 *.tmp
+JLinkLog.txt
+JLinkSettings.ini
+
+# CubeMX backups of overwritten generated files
+*_save
+
+# Python tools
+__pycache__/
+*.pyc
+.venv/
+
+# Personal editor settings
+.vscode/
+.idea/
+*~
+*.swp
+
+# Operating system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local secrets
+app_secrets.h
+
+# Local project notes and logs
+/__log/
+/docs/
+/rules/
+
+# AI assistant files
+CLAUDE.md
+.claude/
+AGENTS.md
