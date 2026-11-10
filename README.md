@@ -110,7 +110,6 @@ The checked-in projects target ARM Compiler 5. Switching to ARM Compiler 6 requi
 | `Node3/Node3/Core/Src/A7680C.c` | A7680C helper library |
 | `Node3/Node3/Core/Inc/A7680C.h` | A7680C library interface |
 | `Node3/Node3/MDK-ARM/Node3.uvprojx` | Node 3 Keil project |
-| `WORKFLOW.md` | Earlier development workflow notes |
 
 Each node also includes `Drivers`, `Middlewares`, CubeMX configuration, startup code, and HAL interrupt/timebase support. **Node 3 has a nested `Node3/Node3` directory; this is the actual project path.** Its modem library is under `Core/Src` and `Core/Inc`, not a separate `Lib` directory.
 
