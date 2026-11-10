@@ -58,7 +58,7 @@ Node 2 and Node 3 independently evaluate the data broadcast by Node 1. **Node 3 
 - Independent Node 3 voice-call alerts through a SIMCom A7680C modem.
 - Latest-value buffering and a three-second freshness check on Node 3.
 - A 60-second minimum interval between call attempts, including failed attempts.
-- Runtime diagnostics exposed as global variables for Keil Watch.
+- Runtime diagnostics exposed as global variables for the debugger's live expressions.
 
 The A7680C library also contains SMS helper functions. **The current integrated application uses voice calls and does not automatically send SMS.**
 
@@ -85,13 +85,10 @@ The source files are `MQ5.c` and `MQ5.h`. They implement analog ADC acquisition;
 
 ### Toolchain recorded in the projects
 
-- Keil µVision / MDK-ARM.
-- ARM Compiler **5.06 update 6, build 750**.
-- Device pack **Keil.STM32F1xx_DFP 2.4.1**.
+- STM32CubeIDE **1.18.1** (GNU Tools for STM32 13.3, ST-Link GDB server), one project per node.
+- STM32CubeMX **6.14.1** with STM32Cube FW_F1 **V1.8.7**, matching the `.ioc` files.
 - STM32F1 HAL, CMSIS, and FreeRTOS sources included in the node directories.
-- FreeRTOS Cortex-M3 port under `portable/RVDS/ARM_CM3`.
-
-The checked-in projects target ARM Compiler 5. Switching to ARM Compiler 6 requires a toolchain/port compatibility review; changing the compiler selector alone is not a validated migration.
+- FreeRTOS Cortex-M3 port under `portable/GCC/ARM_CM3`.
 
 ## Repository layout
 
@@ -101,15 +98,15 @@ The checked-in projects target ARM Compiler 5. Switching to ARM Compiler 6 requi
 | `node1-sensor/Core/Inc/` | Node 1 application and HAL configuration headers |
 | `node1-sensor/Lib/DHT11.c`, `DHT11.h` | DHT11 driver |
 | `node1-sensor/Lib/MQ5.c`, `MQ5.h` | ADC-based gas driver |
-| `node1-sensor/MDK-ARM/node1-sensor.uvprojx` | Node 1 Keil project |
+| `node1-sensor/.project`, `.cproject` | Node 1 STM32CubeIDE project |
 | `node2-actuator/Core/Src/main.c` | CAN receiver, TFT rendering, relay logic |
 | `node2-actuator/Lib/TFT.c`, `TFT.h` | ST7735 driver |
 | `node2-actuator/Lib/FONT.c`, `FONT.h` | Bitmap font definitions |
-| `node2-actuator/MDK-ARM/node2-actuator.uvprojx` | Node 2 Keil project |
+| `node2-actuator/.project`, `.cproject` | Node 2 STM32CubeIDE project |
 | `node3-gateway/Core/Src/main.c` | Integrated CAN/cellular gateway |
 | `node3-gateway/Core/Src/A7680C.c` | A7680C helper library |
 | `node3-gateway/Core/Inc/A7680C.h` | A7680C library interface |
-| `node3-gateway/MDK-ARM/node3-gateway.uvprojx` | Node 3 Keil project |
+| `node3-gateway/.project`, `.cproject` | Node 3 STM32CubeIDE project |
 
 Each node also includes `Drivers`, `Middlewares`, CubeMX configuration, startup code, and HAL interrupt/timebase support. Node 3's modem library is under `Core/Src` and `Core/Inc`, not a separate `Lib` directory.
 
@@ -372,22 +369,22 @@ git pull --ff-only origin develop
 
 `--ff-only` allows an update only when Git can fast-forward without creating a merge commit. It is unrelated to the old repository named `ff`.
 
-### 2. Open the matching Keil project
+### 2. Import the projects into STM32CubeIDE
 
-| Board | Project |
-|---|---|
-| Node 1 | `node1-sensor/MDK-ARM/node1-sensor.uvprojx` |
-| Node 2 | `node2-actuator/MDK-ARM/node2-actuator.uvprojx` |
-| Node 3 | `node3-gateway/MDK-ARM/node3-gateway.uvprojx` |
+Use **File → Import → General → Existing Projects into Workspace** and select the repository root; import `node1-sensor`, `node2-actuator`, and `node3-gateway`.
 
-Select the recorded ARM Compiler 5 toolchain and install the corresponding STM32F1 device pack. Check source/include entries if libraries were moved locally. `TFT.c`, `FONT.c`, and `A7680C.c` must be included in their corresponding projects.
+The same build runs without the GUI:
+
+```bash
+/path/to/STM32CubeIDE/headless-build.sh -data /tmp/ws -import node1-sensor -build node1-sensor/Debug
+```
 
 ### 3. Build and program each board
 
 1. Connect ST-Link SWDIO, SWCLK, and GND to the intended board; provide board power and the reference/reset connections required by the probe.
-2. Select the intended ST-Link and SWD interface in the project's Debug settings.
+2. Create an STM32 C/C++ Application debug configuration for the project with ST-Link (ST-LINK GDB server) over SWD.
 3. Rebuild the target and resolve all compilation/link errors.
-4. Download the firmware and check the programming result.
+4. Start the debug session or run the configuration to program the board, and check the programming result.
 5. Run the board; repeat using the correct project for each node.
 
 Each node has its own executable. Copying source into one Git branch does not combine the three MCUs into a single flash image. Switching Git branches also does not change firmware already programmed into a board.
@@ -447,7 +444,7 @@ If a command fails, enable detailed errors with `AT+CMEE=2` and retain the exact
 - Restore STM32-to-modem wiring and power on the modem.
 - Add Node 3 to the bus; retain termination only at the two physical ends.
 - Verify `g_node3Debug` agrees with the other nodes and `g_sensorFresh = 1`.
-- To isolate the call path, set `g_callRequest = 1` in Watch and resume execution. This manual request respects cooldown but does not require a high gas value or fresh CAN data.
+- To isolate the call path, set `g_callRequest = 1` in Live Expressions and resume execution. This manual request respects cooldown but does not require a high gas value or fresh CAN data.
 - Set `g_hangupRequest = 1` for early hang-up while the call is active.
 
 ### Stage 5 — integrated threshold and relay test
@@ -464,7 +461,7 @@ Use controlled test input or temporarily adjusted software thresholds; do not re
 | CAN stops while relay is ON | Node 2 retains relay ON in the current firmware |
 | Modem reports BUSY/NO CARRIER/NO ANSWER | Call monitoring ends; this does not mean a person answered |
 
-Confirm physical fan behavior as well as TFT/Watch values. If `FAN: OFF` corresponds to a spinning fan, check COM/NO wiring and relay input polarity before modifying CAN code.
+Confirm physical fan behavior as well as TFT/debugger values. If `FAN: OFF` corresponds to a spinning fan, check COM/NO wiring and relay input polarity before modifying CAN code.
 
 ## Debug reference
 
@@ -582,9 +579,9 @@ git push -u origin feature/your-change
 
 Merge reviewed/tested work into `develop`. Promote an explicitly approved stable release into `main` later. Adding a README or merging a feature does not freeze a branch; subsequent commits can still be pushed.
 
-Keil may change `.uvprojx`, RTE files, and local debug artifacts. Review project changes: source entries and include paths may be essential, whereas personal debugger settings and build outputs generally are not. Preserve uncommitted changes with a targeted stash or commit before switching branches; do not discard them blindly.
+STM32CubeIDE writes `Debug/`, `.settings/`, and launch files into each project; they are ignored or personal. Review changes to `.project`, `.cproject`, and `.ioc`: source folders, include paths, and pin configuration are essential. Preserve uncommitted changes with a targeted stash or commit before switching branches; do not discard them blindly.
 
-Each branch is a snapshot of the entire repository, including all three nodes. Changing which Keil project you open does not require changing Git branches. Re-checkout feature branches only when intentionally selecting their earlier firmware state.
+Each branch is a snapshot of the entire repository, including all three nodes. Changing which STM32CubeIDE project you build does not require changing Git branches. Re-checkout feature branches only when intentionally selecting their earlier firmware state.
 
 ## Known limitations and future work
 
@@ -610,6 +607,6 @@ Potential next steps include sensor-validity flags and sequence numbers in the C
 - [FreeRTOS documentation](https://www.freertos.org/Documentation/)
 - [TI SN65HVD230 product information and datasheet](https://www.ti.com/product/SN65HVD230)
 - [SIMCom A7680C product information](https://cn.simcom.com/product/A7680C.html)
-- [Keil µVision documentation](https://www.keil.com/support/man/docs/uv4/)
+- [STM32CubeIDE documentation](https://www.st.com/en/development-tools/stm32cubeide.html)
 
 Third-party HAL, CMSIS, FreeRTOS, and vendor files retain their own copyright and license terms. No repository-wide application license is declared at the documented baseline; this README does not grant additional rights to the application code.

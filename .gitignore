@@ -13,40 +13,21 @@
 *.list
 *.d
 *.su
-
-# Keil MDK build output
-*/MDK-ARM/node[0-9]-*/
-*.crf
-*.dep
-*.lnp
-*.sct
-*.iex
-*.htm
-*.build_log.htm
-*.__i
-*._ia
-*.tra
-*.fed
-*.l1p
-*.l2p
+*.cyclo
 
 # Build directories
 build/
 Debug/
 Release/
-Objects/
-Listings/
 
-# Keil personal settings and logs
-*.uvguix.*
-*.uvopt
-*.bak
-*.tmp
-JLinkLog.txt
-JLinkSettings.ini
+# STM32CubeIDE workspace and per-user settings
+.metadata/
+.settings/
 
 # CubeMX backups of overwritten generated files
 *_save
+*.bak
+*.tmp
 
 # Python tools
 __pycache__/
@@ -69,6 +50,7 @@ app_secrets.h
 
 # Local project notes and logs
 /__log/
+/logs/
 /docs/
 /rules/
 
