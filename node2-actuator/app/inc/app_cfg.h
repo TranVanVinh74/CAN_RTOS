@@ -1,0 +1,14 @@
+#ifndef APP_CFG_H
+#define APP_CFG_H
+
+#include "FreeRTOS.h"
+
+#define TASK_ACTUATOR_PRIO (tskIDLE_PRIORITY + 2)
+#define TASK_ACTUATOR_STACK_WORDS 512U
+#define TASK_ACTUATOR_QUEUE_WAIT_MS 1000U
+
+#define ACTUATOR_QUEUE_LENGTH 5U
+
+#define FAN_GAS_ON_THRESHOLD 2000U
+
+#endif
