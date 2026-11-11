@@ -1,7 +1,5 @@
 #include "hal_can.h"
 
-#define CAN_FILTER_BANK 0U
-#define CAN_SLAVE_START_FILTER_BANK 14U
 #define CAN_MAX_DLC 8U
 
 volatile uint8_t g_canError = CAN_ERR_NONE;
@@ -10,40 +8,14 @@ volatile uint32_t g_canTxFailCount = 0;
 
 static CAN_HandleTypeDef *can_handle = NULL;
 
-static HAL_StatusTypeDef config_accept_all_filter(CAN_HandleTypeDef *hcan) {
-    CAN_FilterTypeDef filter = {0};
-
-    filter.FilterBank = CAN_FILTER_BANK;
-    filter.FilterMode = CAN_FILTERMODE_IDMASK;
-    filter.FilterScale = CAN_FILTERSCALE_32BIT;
-    filter.FilterIdHigh = 0x0000U;
-    filter.FilterIdLow = 0x0000U;
-    filter.FilterMaskIdHigh = 0x0000U;
-    filter.FilterMaskIdLow = 0x0000U;
-    filter.FilterFIFOAssignment = CAN_RX_FIFO0;
-    filter.FilterActivation = ENABLE;
-    filter.SlaveStartFilterBank = CAN_SLAVE_START_FILTER_BANK;
-    return HAL_CAN_ConfigFilter(hcan, &filter);
-}
-
 bool hal_can_init(CAN_HandleTypeDef *hcan) {
     if (hcan == NULL) {
         g_canError = CAN_ERR_NO_HANDLE;
         return false;
     }
 
-    if (config_accept_all_filter(hcan) != HAL_OK) {
-        g_canError = CAN_ERR_FILTER;
-        return false;
-    }
-
     if (HAL_CAN_Start(hcan) != HAL_OK) {
         g_canError = CAN_ERR_START;
-        return false;
-    }
-
-    if (HAL_CAN_ActivateNotification(hcan, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK) {
-        g_canError = CAN_ERR_NOTIFICATION;
         return false;
     }
 
