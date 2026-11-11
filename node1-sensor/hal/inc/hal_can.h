@@ -9,9 +9,7 @@
 typedef enum {
     CAN_ERR_NONE = 0,
     CAN_ERR_NO_HANDLE = 1,
-    CAN_ERR_FILTER = 2,
-    CAN_ERR_START = 3,
-    CAN_ERR_NOTIFICATION = 4
+    CAN_ERR_START = 2
 } CanError_t;
 
 extern volatile uint8_t g_canError;
