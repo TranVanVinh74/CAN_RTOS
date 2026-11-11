@@ -6,6 +6,7 @@
 #include "task.h"
 
 #include "app_cfg.h"
+#include "app_fan.h"
 #include "app_ipc.h"
 #include "bsp_board.h"
 #include "can_protocol.h"
@@ -142,7 +143,7 @@ static void prvActuatorTask(void *pvParameters) {
 
         if (xQueueReceive(xActuatorQueue, &cmd, pdMS_TO_TICKS(TASK_ACTUATOR_QUEUE_WAIT_MS)) ==
             pdPASS) {
-            hal_relay_set(cmd.gas_level > FAN_GAS_ON_THRESHOLD);
+            hal_relay_set(app_fan_should_run(hal_relay_is_on(), cmd.gas_level));
             cmd.fan_state = hal_relay_is_on() ? 1U : 0U;
 
             g_node2Debug = cmd;
