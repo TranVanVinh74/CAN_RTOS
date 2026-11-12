@@ -151,9 +151,9 @@ bool hal_dht11_read(Dht11Reading_t *reading) {
     set_output_low();
     vTaskDelay(pdMS_TO_TICKS(DHT11_START_LOW_MS) + 1U);
 
-    taskENTER_CRITICAL();
+    vTaskSuspendAll();
     Dht11Error_t error = read_frame(frame);
-    taskEXIT_CRITICAL();
+    (void)xTaskResumeAll();
 
     for (uint8_t i = 0; i < DHT11_FRAME_BYTES; i++) {
         g_dhtBytes[i] = frame[i];

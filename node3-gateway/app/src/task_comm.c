@@ -146,6 +146,7 @@ static void prvCommTask(void *pvParameters) {
     (void)pvParameters;
 
     uint32_t last_at_check_ms = 0;
+    uint32_t last_idle_check_ms = 0;
     bool at_checked = false;
 
     start_can();
@@ -164,6 +165,10 @@ static void prvCommTask(void *pvParameters) {
         if (app_call_is_active()) {
             app_call_poll_modem();
             app_call_service();
+            if (g_callStage == CALL_STAGE_MODEM_RESET) {
+                modem_wait_start = now_ms();
+                at_checked = false;
+            }
             vTaskDelay(pdMS_TO_TICKS(TASK_COMM_IDLE_DELAY_MS));
             continue;
         }
@@ -175,6 +180,7 @@ static void prvCommTask(void *pvParameters) {
 
         if (g_atOK == 0U) {
             if (check_modem(now, &last_at_check_ms, &at_checked)) {
+                last_idle_check_ms = now_ms();
                 sensor_update();
             }
             vTaskDelay(pdMS_TO_TICKS(TASK_COMM_WAIT_DELAY_MS));
@@ -182,10 +188,27 @@ static void prvCommTask(void *pvParameters) {
         }
 
         app_call_poll_modem();
+        if (g_atOK == 0U) {
+            modem_wait_start = now_ms();
+            at_checked = false;
+            vTaskDelay(pdMS_TO_TICKS(TASK_COMM_WAIT_DELAY_MS));
+            continue;
+        }
+
         sensor_update();
 
+        if (!alarm_wants_call() && (g_callRequest == 0U) &&
+            ((now_ms() - last_idle_check_ms) >= MODEM_IDLE_CHECK_MS)) {
+            g_atOK = 0;
+            at_checked = false;
+            check_modem(now_ms(), &last_at_check_ms, &at_checked);
+            last_idle_check_ms = now_ms();
+            sensor_update();
+        }
+
         bool manual_request = (g_callRequest == 1U);
-        if ((alarm_wants_call() || manual_request) && app_call_cooldown_over(now_ms())) {
+        if ((g_atOK != 0U) && (alarm_wants_call() || manual_request) &&
+            app_call_cooldown_over(now_ms())) {
             app_call_start(APP_ALERT_PHONE);
         }
 
