@@ -21,7 +21,8 @@ typedef enum {
     BOARD_ERR_SCHEDULER = 7,
     BOARD_ERR_CAN_FILTER = 8,
     BOARD_ERR_CAN_START = 9,
-    BOARD_ERR_CAN_NOTIFICATION = 10
+    BOARD_ERR_CAN_NOTIFICATION = 10,
+    BOARD_ERR_STACK_OVERFLOW = 11
 } BoardError_t;
 
 extern volatile uint32_t g_errorCode;
