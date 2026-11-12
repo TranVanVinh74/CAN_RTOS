@@ -3,11 +3,17 @@
 #ifdef UI_PREVIEW
 #include <assert.h>
 #endif
-
 #include <stddef.h>
 
 #include "app_ui_assets.h"
 #include "hal_tft_graphics.h"
+
+#define UI_GAS_EMA_DIVISOR 4U
+#define UI_GAS_DEADBAND_PERCENT 2U
+#define UI_GAS_GAUGE_FULL_SCALE_PERCENT 150U
+#define UI_GAS_DISPLAY_MAX_PERCENT 999U
+#define UI_GAS_THRESHOLD_MIN 1U
+#define UI_GAS_FIXED_SCALE 256U
 
 #define UI_BG 0x0842U
 #define UI_INK 0xEF9EU
@@ -20,17 +26,28 @@
 #define UI_PANEL 0x10C4U
 #define UI_GAS_MAX 4095U
 #define UI_WARNING_PERCENT 80U
+#define UI_PERCENT_FULL 100U
+#define UI_BLINK_PERIOD_MS 250U
+#define UI_FAN_FRAME_MS 120U
+#define UI_FAN_FRAME_COUNT 4U
+#define UI_GAS_STEP_RAW 50U
+#define UI_TEMPERATURE_INITIAL_C 40U
+#define UI_TEMPERATURE_MAX_C 125U
+#define UI_RED_DIM 0x8004U
+#define UI_SELECTED_PANEL 0x1947U
+#define UI_HASH_OFFSET 2166136261U
+#define UI_HASH_PRIME 16777619U
 #define UI_OP_CAPACITY 192U
 #define UI_LABEL_CAPACITY 24U
 #define UI_TILE_SIZE 8U
-#define UI_TILE_COLUMNS 16U
-#define UI_TILE_COUNT 320U
+#define UI_TILE_COLUMNS (TFT_WIDTH / UI_TILE_SIZE)
+#define UI_TILE_COUNT (UI_TILE_COLUMNS * (TFT_HEIGHT / UI_TILE_SIZE))
 #define UI_TILES_PER_FRAME 80U
 #define UI_SWEEP_MS 1280U
 #define UI_LAYOUT_MS 200U
 #define UI_WIPE_STEP_MS 40U
 #define UI_WIPE_BAND_PX 40U
-#define UI_SCREEN_HEIGHT 160U
+#define UI_SCREEN_HEIGHT TFT_HEIGHT
 
 typedef enum {
     UI_SAFE,
@@ -60,7 +77,6 @@ static bool filter_valid;
 static uint16_t shown_gas;
 static UiOp_t ops[UI_OP_CAPACITY];
 static uint8_t op_count;
-static uint8_t region_width;
 static char label[UI_LABEL_CAPACITY];
 static uint8_t label_length;
 static uint32_t tile_hash[UI_TILE_COUNT];
@@ -134,17 +150,15 @@ static uint8_t text_width(const UiFont_t *font, const char *text) {
     return (uint8_t)width;
 }
 
-static void begin(uint8_t width, uint16_t bg) {
+static void begin(void) {
     op_count = 0U;
-    region_width = width;
-    (void)bg;
 }
 
 static void add(uint8_t x, uint8_t y, uint8_t width, uint8_t height,
                 const uint8_t *mask, uint16_t color) {
 #ifdef UI_PREVIEW
     assert(op_count < UI_OP_CAPACITY);
-    assert((uint16_t)x + width <= region_width);
+    assert((uint16_t)x + width <= TFT_WIDTH);
 #endif
     if (op_count < UI_OP_CAPACITY) {
         ops[op_count++] = (UiOp_t){mask, color, x, y, width, height};
@@ -163,7 +177,7 @@ static void text(uint8_t x, uint8_t y, const char *value, const UiFont_t *font,
 }
 
 static void centered(uint8_t y, const char *value, const UiFont_t *font, uint16_t color) {
-    text((uint8_t)((region_width - text_width(font, value)) / 2U), y, value, font, color);
+    text((uint8_t)((TFT_WIDTH - text_width(font, value)) / 2U), y, value, font, color);
 }
 
 static uint16_t blend(uint16_t fg, uint16_t bg, uint8_t alpha) {
@@ -177,7 +191,7 @@ static uint16_t blend(uint16_t fg, uint16_t bg, uint8_t alpha) {
 static uint16_t gas_percent(const UiView_t *view) {
     uint32_t threshold = view->gas_threshold < UI_GAS_THRESHOLD_MIN ?
                          UI_GAS_THRESHOLD_MIN : view->gas_threshold;
-    uint32_t percent = ((uint32_t)view->gas_raw * 100U + threshold / 2U) / threshold;
+    uint32_t percent = ((uint32_t)view->gas_raw * UI_PERCENT_FULL + threshold / 2U) / threshold;
     return percent > UI_GAS_DISPLAY_MAX_PERCENT ? UI_GAS_DISPLAY_MAX_PERCENT : percent;
 }
 
@@ -187,14 +201,14 @@ static uint16_t gauge_percent(void) {
 }
 
 static uint8_t arc_percent(uint8_t segment) {
-    return (uint16_t)segment * UI_GAS_GAUGE_FULL_SCALE_PERCENT / 60U;
+    return (uint16_t)segment * UI_GAS_GAUGE_FULL_SCALE_PERCENT / (UI_ARC_COUNT - 1U);
 }
 
 static UiState_t gas_state(const UiView_t *view) {
     if (view->gas_raw > view->gas_threshold) {
         return UI_DANGER;
     }
-    return (uint32_t)view->gas_raw * 100U >=
+    return (uint32_t)view->gas_raw * UI_PERCENT_FULL >=
            (uint32_t)view->gas_threshold * UI_WARNING_PERCENT ? UI_WARNING : UI_SAFE;
 }
 
@@ -243,7 +257,7 @@ static void main_scene(void) {
     UiState_t current = state(&target);
     bool live = available(&target);
     bool gas_alarm = live && target.gas_raw > target.gas_threshold;
-    bool gas_warn = live && (uint32_t)target.gas_raw * 100U >=
+    bool gas_warn = live && (uint32_t)target.gas_raw * UI_PERCENT_FULL >=
                            (uint32_t)target.gas_threshold * UI_WARNING_PERCENT;
     bool hot = live && target.temperature_threshold_configured &&
                target.temperature > target.temperature_threshold;
@@ -258,17 +272,19 @@ static void main_scene(void) {
     add(98U, 5U, 14U, 14U, ui_icon_link,
         lamp_check || live ? UI_CYAN : UI_LINE);
     uint16_t gas = gauge_percent();
-    for (uint8_t i = 0U; i < 61U; i++) {
+    for (uint8_t i = 0U; i < UI_ARC_COUNT; i++) {
         const UiArc_t *arc = &ui_arc[i];
-        bool redline = arc_percent(i) >= 100U;
-        bool lit = (uint32_t)i * UI_GAS_GAUGE_FULL_SCALE_PERCENT <= (uint32_t)gas * 60U &&
+        bool redline = arc_percent(i) >= UI_PERCENT_FULL;
+        bool lit = (uint32_t)i * UI_GAS_GAUGE_FULL_SCALE_PERCENT <=
+                   (uint32_t)gas * (UI_ARC_COUNT - 1U) &&
                    (live || lamp_check);
-        uint16_t color = redline ? (lit ? UI_RED : 0x8004U) : (lit ? UI_CYAN : UI_LINE);
+        uint16_t color = redline ? (lit ? UI_RED : UI_RED_DIM) : (lit ? UI_CYAN : UI_LINE);
         add(arc->x, arc->y, arc->width, arc->height, arc->mask, color);
     }
-    for (uint8_t i = 0U; i < 13U; i++) {
+    for (uint8_t i = 0U; i < UI_TICK_COUNT; i++) {
         const UiArc_t *tick = &ui_ticks[i];
-        bool redline = (uint32_t)i * UI_GAS_GAUGE_FULL_SCALE_PERCENT >= 100U * 12U;
+        bool redline = (uint32_t)i * UI_GAS_GAUGE_FULL_SCALE_PERCENT >=
+                       UI_PERCENT_FULL * (UI_TICK_COUNT - 1U);
         add(tick->x, tick->y, tick->width, tick->height, tick->mask,
             redline ? UI_RED : UI_MUTED);
     }
@@ -281,7 +297,7 @@ static void main_scene(void) {
     }
     uint16_t status_ink = state_color(current);
     if (current == UI_DANGER && !blink_on) {
-        status_ink = 0x8004U;
+        status_ink = UI_RED_DIM;
     }
     const char *word = lamp_check ? "READY" : words[current];
     static const uint8_t *const cues[] = {
@@ -315,7 +331,7 @@ static void settings_scene(void) {
         bool selected = target.selected_threshold ==
                         (gas ? UI_THRESHOLD_GAS : UI_THRESHOLD_TEMPERATURE);
         uint8_t y = gas ? 43U : 87U;
-        add(4U, y, 120U, 39U, NULL, selected ? 0x1947U : UI_PANEL);
+        add(4U, y, 120U, 39U, NULL, selected ? UI_SELECTED_PANEL : UI_PANEL);
         if (selected) {
             add(4U, y, 4U, 39U, NULL, UI_CYAN);
             add(8U, y, 116U, 1U, NULL, UI_CYAN);
@@ -518,8 +534,9 @@ void app_ui_tick(uint32_t now_ms) {
     } else {
         shown_gas = available(&target) ? display_gas : 0U;
     }
-    blink_on = (now_ms / 250U) % 2U == 0U;
-    fan_frame = target.has_data && target.fan_on ? (now_ms / 120U) % 4U : 0U;
+    blink_on = (now_ms / UI_BLINK_PERIOD_MS) % 2U == 0U;
+    fan_frame = target.has_data && target.fan_on ?
+                (now_ms / UI_FAN_FRAME_MS) % UI_FAN_FRAME_COUNT : 0U;
     uint8_t next_mode = target.bus_error ? 3U : target.edit_mode ? 1U :
                         (target.stale && target.has_data ? 2U : 0U);
     if (!screen_started) {
@@ -535,7 +552,7 @@ void app_ui_tick(uint32_t now_ms) {
     uint32_t bands = (now_ms - transition_ms) / UI_WIPE_STEP_MS + 1U;
     reveal_height = bands >= UI_SCREEN_HEIGHT / UI_WIPE_BAND_PX ? UI_SCREEN_HEIGHT :
                     (uint8_t)(bands * UI_WIPE_BAND_PX);
-    begin(128U, UI_BG);
+    begin();
     if (target.bus_error) {
         bus_error_scene();
     } else if (target.edit_mode) {
@@ -564,12 +581,13 @@ void app_ui_button(UiView_t *view, UiButton_t button) {
         bool increase = button == UI_BUTTON_PLUS;
         if (view->selected_threshold == UI_THRESHOLD_GAS) {
             uint16_t gas = view->gas_threshold > UI_GAS_MAX ? UI_GAS_MAX : view->gas_threshold;
-            view->gas_threshold = increase ? (gas < 4045U ? gas + 50U : UI_GAS_MAX) :
-                                            (gas > 50U ? gas - 50U : 0U);
+            view->gas_threshold = increase ?
+                (gas < UI_GAS_MAX - UI_GAS_STEP_RAW ? gas + UI_GAS_STEP_RAW : UI_GAS_MAX) :
+                (gas > UI_GAS_STEP_RAW ? gas - UI_GAS_STEP_RAW : 0U);
         } else if (!view->temperature_threshold_configured) {
-            view->temperature_threshold = 40U;
+            view->temperature_threshold = UI_TEMPERATURE_INITIAL_C;
             view->temperature_threshold_configured = true;
-        } else if (increase && view->temperature_threshold < 125U) {
+        } else if (increase && view->temperature_threshold < UI_TEMPERATURE_MAX_C) {
             view->temperature_threshold++;
         } else if (!increase && view->temperature_threshold != 0U) {
             view->temperature_threshold--;
@@ -594,7 +612,7 @@ uint8_t app_ui_preview_arc_percent(uint8_t segment) {
 }
 
 uint16_t app_ui_preview_arc_color(uint8_t segment) {
-    assert(segment <= 60U);
+    assert(segment < UI_ARC_COUNT);
     return ops[4U + segment].color;
 }
 

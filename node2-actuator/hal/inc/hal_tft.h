@@ -1,12 +1,9 @@
 #ifndef HAL_TFT_H
 #define HAL_TFT_H
 
-#include <stdbool.h>
 #include <stdint.h>
 
 #include "stm32f1xx_hal.h"
-
-#include "hal_tft_graphics.h"
 
 typedef struct {
     GPIO_TypeDef *cs_port;

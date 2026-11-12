@@ -4,6 +4,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-bool app_fan_should_run(bool running, uint16_t gas_level);
+bool app_fan_should_run(bool running, uint16_t gas_raw);
 
 #endif

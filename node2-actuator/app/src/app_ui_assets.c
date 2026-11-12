@@ -1180,7 +1180,7 @@ static const uint8_t arc_60[50] = {
     0x00, 0x00,
 };
 
-const UiArc_t ui_arc[61] = {
+const UiArc_t ui_arc[UI_ARC_COUNT] = {
     {arc_0, 24, 104, 9, 10},
     {arc_1, 21, 101, 9, 10},
     {arc_2, 18, 98, 10, 10},
@@ -1322,7 +1322,7 @@ static const uint8_t ticks_12[32] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 
-const UiArc_t ui_ticks[13] = {
+const UiArc_t ui_ticks[UI_TICK_COUNT] = {
     {ticks_0, 28, 101, 8, 8},
     {ticks_1, 18, 87, 8, 7},
     {ticks_2, 14, 70, 9, 6},

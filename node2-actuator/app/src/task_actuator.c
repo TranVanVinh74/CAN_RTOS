@@ -11,7 +11,7 @@
 #include "can_protocol.h"
 #include "hal_can.h"
 #include "hal_relay.h"
-#include "hal_tft.h"
+#include "hal_tft_graphics.h"
 
 #define TFT_STAGE_WAITING 2U
 #define TFT_STAGE_DATA 3U
@@ -45,7 +45,7 @@ static void on_can_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
         return;
     }
 
-    can_unpack_sensor(frame->data, &cmd.temperature, &cmd.humidity, &cmd.gas_level);
+    can_unpack_sensor(frame->data, &cmd.temperature, &cmd.humidity, &cmd.gas_raw);
     g_canRxCount++;
 
     if (xQueueSendFromISR(xActuatorQueue, &cmd, task_woken) != pdPASS) {
@@ -104,7 +104,7 @@ static void prvActuatorTask(void *pvParameters) {
 
         if (xQueueReceive(xActuatorQueue, &cmd, pdMS_TO_TICKS(UI_FRAME_MS)) ==
             pdPASS) {
-            hal_relay_set(app_fan_should_run(hal_relay_is_on(), cmd.gas_level));
+            hal_relay_set(app_fan_should_run(hal_relay_is_on(), cmd.gas_raw));
             cmd.fan_state = hal_relay_is_on() ? 1U : 0U;
 
             g_node2Debug = cmd;
@@ -115,7 +115,7 @@ static void prvActuatorTask(void *pvParameters) {
             view.has_data = true;
             view.temperature = cmd.temperature;
             view.humidity = cmd.humidity;
-            view.gas_raw = cmd.gas_level;
+            view.gas_raw = cmd.gas_raw;
             view.fan_on = cmd.fan_state != 0U;
         }
 
