@@ -1,5 +1,8 @@
 #include "bsp_board.h"
 
+#include "FreeRTOS.h"
+#include "task.h"
+
 #include "main.h"
 
 #include "hal_can.h"
@@ -10,6 +13,7 @@ extern CAN_HandleTypeDef hcan;
 extern SPI_HandleTypeDef hspi1;
 
 volatile uint32_t g_errorCode = BOARD_ERR_NONE;
+volatile char g_stackOverflowTask[configMAX_TASK_NAME_LEN];
 
 static const TftPins_t tft_pins = {
     .cs_port = TFT_CS_GPIO_Port,
@@ -29,4 +33,12 @@ void bsp_board_init(void) {
 void bsp_board_fail(BoardError_t error) {
     g_errorCode = error;
     Error_Handler();
+}
+
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {
+    (void)xTask;
+    for (uint32_t i = 0; i < (sizeof(g_stackOverflowTask) - 1U) && (pcTaskName[i] != '\0'); i++) {
+        g_stackOverflowTask[i] = pcTaskName[i];
+    }
+    bsp_board_fail(BOARD_ERR_STACK_OVERFLOW);
 }
