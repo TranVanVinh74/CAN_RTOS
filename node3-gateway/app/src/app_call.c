@@ -7,6 +7,7 @@
 #include "task.h"
 
 #include "app_cfg.h"
+#include "app_modem_reply.h"
 #include "hal_a7680c.h"
 
 #define CALL_COMMAND_LEN 64U
@@ -21,6 +22,7 @@ volatile uint32_t g_callAttempts = 0;
 volatile uint32_t g_callElapsedMs = 0;
 volatile uint32_t g_callCooldownMs = 0;
 volatile uint32_t g_hangupCount = 0;
+volatile uint32_t g_modemResetCount = 0;
 
 char g_lastCommand[CALL_COMMAND_LEN];
 char g_callRx[CALL_REPLY_LEN];
@@ -52,15 +54,6 @@ static void append_reply(uint8_t byte) {
 static bool send_command(const char *command) {
     snprintf(g_lastCommand, sizeof(g_lastCommand), "%s", command);
     return hal_a7680c_send(command);
-}
-
-static bool reply_contains(const char *text) {
-    return strstr(g_callRx, text) != NULL;
-}
-
-static bool modem_ended_call(void) {
-    return reply_contains("NO CARRIER") || reply_contains("BUSY") || reply_contains("NO ANSWER") ||
-           reply_contains("NO DIALTONE");
 }
 
 static void mark_inactive(void) {
@@ -130,15 +123,23 @@ void app_call_start(const char *phone) {
 void app_call_service(void) {
     g_callElapsedMs = now_ms() - call_started_ms;
 
-    if (modem_ended_call()) {
+    switch (app_modem_classify_reply(g_callRx)) {
+    case MODEM_REPLY_MODEM_RESET:
+        mark_inactive();
+        g_modemResetCount++;
+        g_atOK = 0;
+        g_callStage = CALL_STAGE_MODEM_RESET;
+        return;
+    case MODEM_REPLY_CALL_ENDED:
         mark_inactive();
         g_callStage = CALL_STAGE_ENDED_BY_MODEM;
         return;
-    }
-
-    if (reply_contains("ERROR")) {
+    case MODEM_REPLY_ERROR:
         hang_up(CALL_STAGE_ERROR);
         return;
+    case MODEM_REPLY_NONE:
+    default:
+        break;
     }
 
     if ((g_hangupRequest != 0U) || (g_callElapsedMs >= CALL_DURATION_MS)) {
