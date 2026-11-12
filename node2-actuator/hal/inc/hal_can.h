@@ -34,5 +34,6 @@ void hal_can_init(CAN_HandleTypeDef *hcan);
 void hal_can_set_rx_handler(CanRxHandler_t rx_handler);
 CanError_t hal_can_start(void);
 uint32_t hal_can_get_error(void);
+bool hal_can_bus_fault(void);
 
 #endif

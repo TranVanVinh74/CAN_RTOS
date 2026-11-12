@@ -1,13 +1,12 @@
 #include "task_actuator.h"
 
-#include <stdio.h>
-
 #include "FreeRTOS.h"
 #include "task.h"
 
 #include "app_cfg.h"
 #include "app_fan.h"
 #include "app_ipc.h"
+#include "app_ui.h"
 #include "bsp_board.h"
 #include "can_protocol.h"
 #include "hal_can.h"
@@ -20,16 +19,7 @@
 
 #define CAN_STAGE_STARTING 1U
 #define CAN_STAGE_RUNNING 2U
-
-#define SCREEN_X 5U
-#define SCREEN_TITLE_Y 5U
-#define SCREEN_RULE_Y 22U
-#define SCREEN_TEMP_Y 35U
-#define SCREEN_HUM_Y 55U
-#define SCREEN_GAS_Y 75U
-#define SCREEN_FAN_Y 95U
-#define SCREEN_STATUS_Y 125U
-#define SCREEN_TEXT_LEN 24U
+#define CAN_STAGE_ERROR 99U
 
 volatile ActuatorCommand_t g_node2Debug = {0};
 volatile uint32_t g_tftStage = 0;
@@ -63,57 +53,13 @@ static void on_can_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
     }
 }
 
-static void draw_text(uint8_t y, const char *text, uint16_t color) {
-    hal_tft_draw_string(SCREEN_X, y, text, &tft_font_7x10, color, TFT_BLACK);
+static void draw_view(const UiView_t *view) {
+    app_ui_render(view);
+    g_tftStage = hal_tft_ok() ?
+                 (view->has_data ? TFT_STAGE_DATA : TFT_STAGE_WAITING) : TFT_STAGE_ERROR;
 }
 
-static void draw_waiting_screen(void) {
-    if (!hal_tft_ok()) {
-        g_tftStage = TFT_STAGE_ERROR;
-        return;
-    }
-
-    hal_tft_fill(TFT_BLACK);
-    draw_text(SCREEN_TITLE_Y, "NODE 2 - CAN", TFT_YELLOW);
-    hal_tft_draw_line(0, SCREEN_RULE_Y, TFT_WIDTH - 1, SCREEN_RULE_Y, TFT_WHITE);
-    draw_text(SCREEN_TEMP_Y, "TEMP: --- C", TFT_CYAN);
-    draw_text(SCREEN_HUM_Y, "HUM : --- %", TFT_CYAN);
-    draw_text(SCREEN_GAS_Y, "GAS : -----", TFT_WHITE);
-    draw_text(SCREEN_FAN_Y, "FAN : OFF", TFT_GREEN);
-    draw_text(SCREEN_STATUS_Y, "WAIT CAN... ", TFT_YELLOW);
-
-    g_tftStage = hal_tft_ok() ? TFT_STAGE_WAITING : TFT_STAGE_ERROR;
-}
-
-static void draw_values(const ActuatorCommand_t *cmd) {
-    char text[SCREEN_TEXT_LEN];
-
-    if (!hal_tft_ok()) {
-        g_tftStage = TFT_STAGE_ERROR;
-        return;
-    }
-
-    snprintf(text, sizeof(text), "TEMP: %3u C", (unsigned int)cmd->temperature);
-    draw_text(SCREEN_TEMP_Y, text, TFT_CYAN);
-
-    snprintf(text, sizeof(text), "HUM : %3u %%", (unsigned int)cmd->humidity);
-    draw_text(SCREEN_HUM_Y, text, TFT_CYAN);
-
-    snprintf(text, sizeof(text), "GAS : %5u", (unsigned int)cmd->gas_level);
-    draw_text(SCREEN_GAS_Y, text, TFT_WHITE);
-
-    if (cmd->fan_state != 0U) {
-        draw_text(SCREEN_FAN_Y, "FAN : ON ", TFT_RED);
-    } else {
-        draw_text(SCREEN_FAN_Y, "FAN : OFF", TFT_GREEN);
-    }
-
-    draw_text(SCREEN_STATUS_Y, "CAN RX OK   ", TFT_GREEN);
-
-    g_tftStage = hal_tft_ok() ? TFT_STAGE_DATA : TFT_STAGE_ERROR;
-}
-
-static void start_can(void) {
+static bool start_can(void) {
     static const BoardError_t board_error[] = {
         [CAN_ERR_NONE] = BOARD_ERR_NONE,
         [CAN_ERR_NO_HANDLE] = BOARD_ERR_CAN_START,
@@ -126,22 +72,37 @@ static void start_can(void) {
 
     CanError_t error = hal_can_start();
     if (error != CAN_ERR_NONE) {
-        bsp_board_fail(board_error[error]);
+        g_errorCode = board_error[error];
+        g_canStage = CAN_STAGE_ERROR;
+        return false;
     }
 
     g_canStage = CAN_STAGE_RUNNING;
+    return true;
 }
 
 static void prvActuatorTask(void *pvParameters) {
     (void)pvParameters;
 
-    draw_waiting_screen();
-    start_can();
+    UiView_t view = {
+        .gas_threshold = FAN_GAS_ON_THRESHOLD,
+        .temperature_threshold_configured = false,
+        .edit_mode = false,
+    };
+    TickType_t last_sensor_tick = 0;
+
+    app_ui_reset();
+    draw_view(&view);
+    for (uint8_t frame = 0U; frame < UI_BOOT_LAYOUT_FRAMES; frame++) {
+        app_ui_tick(xTaskGetTickCount() * portTICK_PERIOD_MS);
+        vTaskDelay(pdMS_TO_TICKS(UI_FRAME_MS));
+    }
+    bool can_started = start_can();
 
     for (;;) {
         ActuatorCommand_t cmd;
 
-        if (xQueueReceive(xActuatorQueue, &cmd, pdMS_TO_TICKS(TASK_ACTUATOR_QUEUE_WAIT_MS)) ==
+        if (xQueueReceive(xActuatorQueue, &cmd, pdMS_TO_TICKS(UI_FRAME_MS)) ==
             pdPASS) {
             hal_relay_set(app_fan_should_run(hal_relay_is_on(), cmd.gas_level));
             cmd.fan_state = hal_relay_is_on() ? 1U : 0U;
@@ -149,11 +110,25 @@ static void prvActuatorTask(void *pvParameters) {
             g_node2Debug = cmd;
             g_canProcessedCount++;
 
-            draw_values(&cmd);
+            last_sensor_tick = xTaskGetTickCount();
+            view.sample_id++;
+            view.has_data = true;
+            view.temperature = cmd.temperature;
+            view.humidity = cmd.humidity;
+            view.gas_raw = cmd.gas_level;
+            view.fan_on = cmd.fan_state != 0U;
         }
 
-        g_taskLoops++;
+        view.stale = view.has_data &&
+                     ((TickType_t)(xTaskGetTickCount() - last_sensor_tick) >=
+                      pdMS_TO_TICKS(SCREEN_STALE_TIMEOUT_MS));
         g_canError = hal_can_get_error();
+        view.bus_error = !can_started || hal_can_bus_fault();
+        draw_view(&view);
+        app_ui_tick(xTaskGetTickCount() * portTICK_PERIOD_MS);
+        g_tftStage = hal_tft_ok() ? g_tftStage : TFT_STAGE_ERROR;
+
+        g_taskLoops++;
     }
 }
 

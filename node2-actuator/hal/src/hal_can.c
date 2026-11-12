@@ -2,6 +2,11 @@
 
 #include <stddef.h>
 
+#define CAN_ERROR_PASSIVE_COUNT 128U
+#define CAN_ESR_COUNTER_MASK 0xFFU
+#define CAN_ESR_TX_COUNTER_SHIFT 16U
+#define CAN_ESR_RX_COUNTER_SHIFT 24U
+
 #define CAN_FILTER_BANK 0U
 #define CAN_SLAVE_START_FILTER_BANK 14U
 
@@ -60,6 +65,17 @@ CanError_t hal_can_start(void) {
 
 uint32_t hal_can_get_error(void) {
     return (can_handle != NULL) ? HAL_CAN_GetError(can_handle) : 0U;
+}
+
+bool hal_can_bus_fault(void) {
+    if (can_handle == NULL) {
+        return true;
+    }
+    uint32_t status = can_handle->Instance->ESR;
+    uint32_t tx_errors = (status >> CAN_ESR_TX_COUNTER_SHIFT) & CAN_ESR_COUNTER_MASK;
+    uint32_t rx_errors = (status >> CAN_ESR_RX_COUNTER_SHIFT) & CAN_ESR_COUNTER_MASK;
+    return (status & (CAN_ESR_BOFF | CAN_ESR_EPVF)) != 0U ||
+           tx_errors >= CAN_ERROR_PASSIVE_COUNT || rx_errors >= CAN_ERROR_PASSIVE_COUNT;
 }
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
