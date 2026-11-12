@@ -5,7 +5,7 @@
 Google / Noto project. Copyright 2010, 2012-2020 Google Inc.; 2015-2020 Google LLC. SIL Open Font License 1.1.
 Source: https://github.com/notofonts/noto-fonts
 
-NotoSans-CondensedBold.ttf at 8, 10, 12, 19 and 34 pixel sizes is rasterized into proportional glyph bitmaps with packed 4-bit coverage in `node2-actuator/app/src/app_ui_assets.c`, declared by `node2-actuator/app/inc/app_ui_assets.h`. Only uppercase English letters, digits, space, %, degree sign, hyphen, slash, period and colon needed by each size are included. Digits use tabular advances; every glyph has a minimum one-pixel ink gap. No font file is embedded.
+NotoSans-CondensedBold.ttf at 8, 10, 12, 19 and 34 pixel sizes is rasterized into proportional glyph bitmaps with packed 4-bit coverage in `node2-actuator/app/src/app_ui_assets.c`, declared by `node2-actuator/app/inc/app_ui_assets.h`. Only uppercase English letters, digits, space, %, degree sign, hyphen, slash, period and colon needed by each size are included. Digits use tabular advances; every glyph has a minimum one-pixel ink gap. The fonts are used by the gas gauge, telltales, status labels and settings renderer. No font file is embedded.
 
 ### SIL Open Font License 1.1
 
@@ -131,7 +131,7 @@ Google Material Symbols Rounded, weight 400, Apache License 2.0.
 Source: https://github.com/google/material-design-icons
 Package: @material-symbols/svg-400 version 0.49.0.
 
-Icons embedded as packed 4-bit alpha masks in the same firmware assets: local_fire_department (14 px), device_thermostat (14 px), sensors (14 px), mode_fan (14 px), swap_vert (16 px), add (16 px), remove (16 px), check (16 px). Original procedural chevrons and status cues are also embedded. Three rotated variants of mode_fan are included. The -fill suffix denotes the filled variant. Masks are tinted at draw time.
+Icons embedded as packed 4-bit alpha masks in the same firmware assets: local_fire_department (14 px), device_thermostat (14 px), sensors (14 px), mode_fan (14 px), swap_vert (16 px), add (16 px), remove (16 px), check (16 px). Project-specific gauge arcs, ticks, chevrons and status cues are also embedded. Three rotated variants of mode_fan are included. The -fill suffix denotes the filled variant. Masks are tinted at draw time.
 
 ### Apache License 2.0
 
