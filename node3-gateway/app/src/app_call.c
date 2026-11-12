@@ -129,6 +129,7 @@ void app_call_service(void) {
         g_modemResetCount++;
         g_atOK = 0;
         g_callStage = CALL_STAGE_MODEM_RESET;
+        reset_reply();
         return;
     case MODEM_REPLY_CALL_ENDED:
         mark_inactive();
@@ -152,5 +153,12 @@ void app_call_poll_modem(void) {
 
     while (hal_a7680c_read_byte(&byte)) {
         append_reply(byte);
+        if (!call_active && (app_modem_classify_reply(g_callRx) == MODEM_REPLY_MODEM_RESET)) {
+            g_modemResetCount++;
+            g_atOK = 0;
+            g_callStage = CALL_STAGE_MODEM_BOOT;
+            reset_reply();
+            return;
+        }
     }
 }
