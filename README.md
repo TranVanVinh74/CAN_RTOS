@@ -69,6 +69,15 @@ Wire the CAN bus as a line Node 1 – Node 2 – Node 3, with 120 Ω only at Nod
 - If CAN data stops, the fan keeps its last state.
 - Thresholds are fixed at build time; setting them from a diagnostic tool is planned.
 - Node 3 calls one number and does not retry or fall back to SMS when a call fails.
+- The `.ioc` files are not yet in sync with `main.c`, so code cannot be regenerated with STM32CubeMX.
+
+## Branches
+
+| Branch | Content |
+|---|---|
+| `main` | Stable releases tested on the hardware, tagged `vX.Y.Z` |
+| `develop` | Integration of finished features before the next release |
+| `feature/*`, `integration/*` | Work in progress, merged into `develop` |
 
 ## License
 
