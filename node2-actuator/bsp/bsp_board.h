@@ -29,5 +29,7 @@ extern volatile uint32_t g_errorCode;
 
 void bsp_board_init(void);
 void bsp_board_fail(BoardError_t error);
+void bsp_board_set_init_step(BoardError_t step);
+void bsp_board_record_error(void);
 
 #endif
