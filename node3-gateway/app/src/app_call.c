@@ -149,7 +149,7 @@ void app_call_service(void) {
 void app_call_poll_modem(void) {
     uint8_t byte;
 
-    if (hal_a7680c_read_byte(&byte, MODEM_POLL_BYTE_TIMEOUT_MS) == MODEM_READ_BYTE) {
+    while (hal_a7680c_read_byte(&byte)) {
         append_reply(byte);
     }
 }
