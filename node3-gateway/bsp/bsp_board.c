@@ -14,7 +14,10 @@ extern UART_HandleTypeDef huart2;
 volatile uint32_t g_errorCode = BOARD_ERR_NONE;
 volatile char g_stackOverflowTask[configMAX_TASK_NAME_LEN];
 
+static BoardError_t init_step = BOARD_ERR_NONE;
+
 void bsp_board_init(void) {
+    init_step = BOARD_ERR_NONE;
     hal_can_init(&hcan);
     hal_a7680c_init(&huart2);
 }
@@ -22,6 +25,22 @@ void bsp_board_init(void) {
 void bsp_board_fail(BoardError_t error) {
     g_errorCode = error;
     Error_Handler();
+}
+
+void bsp_board_set_init_step(BoardError_t step) {
+    init_step = step;
+}
+
+void bsp_board_record_error(void) {
+    if (g_errorCode != BOARD_ERR_NONE) {
+        return;
+    }
+
+    if ((init_step == BOARD_ERR_OSCILLATOR) && ((RCC->CR & RCC_CR_PLLRDY) != 0U)) {
+        g_errorCode = BOARD_ERR_CLOCK;
+    } else {
+        g_errorCode = init_step;
+    }
 }
 
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {

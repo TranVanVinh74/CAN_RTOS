@@ -15,6 +15,8 @@ extern SPI_HandleTypeDef hspi1;
 volatile uint32_t g_errorCode = BOARD_ERR_NONE;
 volatile char g_stackOverflowTask[configMAX_TASK_NAME_LEN];
 
+static BoardError_t init_step = BOARD_ERR_NONE;
+
 static const TftPins_t tft_pins = {
     .cs_port = TFT_CS_GPIO_Port,
     .cs_pin = TFT_CS_Pin,
@@ -25,6 +27,7 @@ static const TftPins_t tft_pins = {
 };
 
 void bsp_board_init(void) {
+    init_step = BOARD_ERR_NONE;
     hal_relay_init(BSP_RELAY_PORT, BSP_RELAY_PIN, BSP_RELAY_ON_LEVEL);
     hal_tft_init(&hspi1, &tft_pins);
     hal_can_init(&hcan);
@@ -33,6 +36,22 @@ void bsp_board_init(void) {
 void bsp_board_fail(BoardError_t error) {
     g_errorCode = error;
     Error_Handler();
+}
+
+void bsp_board_set_init_step(BoardError_t step) {
+    init_step = step;
+}
+
+void bsp_board_record_error(void) {
+    if (g_errorCode != BOARD_ERR_NONE) {
+        return;
+    }
+
+    if ((init_step == BOARD_ERR_OSCILLATOR) && ((RCC->CR & RCC_CR_PLLRDY) != 0U)) {
+        g_errorCode = BOARD_ERR_CLOCK;
+    } else {
+        g_errorCode = init_step;
+    }
 }
 
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {

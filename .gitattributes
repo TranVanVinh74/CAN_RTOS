@@ -1,0 +1,3 @@
+node*/Core/** text eol=lf
+node*/*.ioc text eol=lf
+node*/.mxproject text eol=lf
