@@ -22,7 +22,7 @@ flowchart LR
 | ECU | Role |
 |---|---|
 | Node 1 · Sensor ECU | Reads the MQ-5 gas sensor and DHT11, broadcasts one frame every 500 ms |
-| Node 2 · Display & Actuator ECU | Shows readings and fan state on an ST7735 TFT, switches the fan with hysteresis (on above 2000, off below 1800) |
+| Node 2 · Display & Actuator ECU | Shows a car-style instrument cluster on an ST7735 TFT (gas gauge with a redline at the threshold, warning lamps, temperature, humidity, fan), switches the fan with hysteresis (on above 2000, off below 1800) |
 | Node 3 · Cellular Alert Gateway | Checks that data is fresh, raises the alarm with the same hysteresis (on above 2000, off below 1800), calls a phone through the A7680C modem, limits call rate and length |
 
 ## Features
@@ -30,6 +30,7 @@ flowchart LR
 - STM32F103C8T6 ECUs running FreeRTOS, linked by Classical CAN at 500 kbit/s.
 - Interrupt-driven CAN reception feeding FreeRTOS queues; slow work (display, modem) stays in tasks.
 - Automatic ventilation from the gas threshold, with hysteresis.
+- Animated TFT cluster: start-up sweep and lamp check, smooth gauge movement, blinking danger lamp, offline state when Node 1 stops sending, bus error state that clears when the bus recovers; only changed regions are redrawn. Gas is shown as a percentage of the alarm threshold (the MQ-5 is not calibrated, so no ppm), the raw reading on the settings screen.
 - Cellular VoLTE call alert with freshness check, 60 s minimum interval between calls and 30 s call limit.
 - Modem replies received by interrupt into a ring buffer, so a rejected call or a modem restart ends the call at once.
 - Stack overflow checking and a fatal error code on every node.
@@ -80,4 +81,4 @@ Wire the CAN bus as a line Node 1 – Node 2 – Node 3, with 120 Ω only at Nod
 
 ## License
 
-The firmware written for this project is released under the MIT License (see `LICENSE`). STM32 HAL, CMSIS and FreeRTOS keep their own licenses, included in their folders.
+The firmware written for this project is released under the MIT License (see `LICENSE`). STM32 HAL, CMSIS and FreeRTOS keep their own licenses, included in their folders. The fonts (Noto Sans, SIL Open Font License 1.1) and icons (Material Symbols, Apache License 2.0) drawn on the Node 2 display are listed with their licenses in `THIRD_PARTY.md`.
