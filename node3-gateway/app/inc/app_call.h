@@ -13,6 +13,7 @@ typedef enum {
     CALL_STAGE_IN_CALL = 5,
     CALL_STAGE_HUNG_UP = 6,
     CALL_STAGE_ENDED_BY_MODEM = 7,
+    CALL_STAGE_MODEM_RESET = 8,
     CALL_STAGE_ERROR = 90
 } CallStage_t;
 
