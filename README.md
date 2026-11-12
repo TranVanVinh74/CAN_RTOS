@@ -23,7 +23,7 @@ flowchart LR
 |---|---|
 | Node 1 · Sensor ECU | Reads the MQ-5 gas sensor and DHT11, broadcasts one frame every 500 ms |
 | Node 2 · Display & Actuator ECU | Shows readings and fan state on an ST7735 TFT, switches the fan with hysteresis (on above 2000, off below 1800) |
-| Node 3 · Cellular Alert Gateway | Checks that data is fresh, calls a phone through the A7680C modem, limits call rate and length |
+| Node 3 · Cellular Alert Gateway | Checks that data is fresh, raises the alarm with the same hysteresis (on above 2000, off below 1800), calls a phone through the A7680C modem, limits call rate and length |
 
 ## Features
 
