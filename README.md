@@ -30,10 +30,10 @@ flowchart LR
 - STM32F103C8T6 ECUs running FreeRTOS, linked by Classical CAN at 500 kbit/s.
 - Interrupt-driven CAN reception feeding FreeRTOS queues; slow work (display, modem) stays in tasks.
 - Automatic ventilation from the gas threshold, with hysteresis.
-- Animated TFT cluster: start-up sweep and lamp check, smooth gauge movement, blinking danger lamp, offline state when Node 1 stops sending, bus error state that clears when the bus recovers; only changed regions are redrawn. Gas is shown as a percentage of the alarm threshold (the MQ-5 is not calibrated, so no ppm), the raw reading on the settings screen.
+- Animated TFT cluster: start-up sweep and lamp check, smooth gauge movement, blinking danger lamp, OFFLINE after 3 s without processed sensor data, BUS ERROR from live CAN state, with automatic bus-off recovery on Node 2; only changed regions are redrawn. Gas is shown as a percentage of the alarm threshold (the MQ-5 is not calibrated, so no ppm), the raw reading in the settings screen.
 - Cellular VoLTE call alert with freshness check, 60 s minimum interval between calls and 30 s call limit.
 - Modem replies received by interrupt into a ring buffer, so a rejected call or a modem restart ends the call at once.
-- Stack overflow checking and a fatal error code on every node.
+- Stack overflow hooks on all nodes; Node 2 and Node 3 also expose fatal start-up error codes.
 
 ## Repository structure
 
@@ -68,7 +68,7 @@ Wire the CAN bus as a line Node 1 – Node 2 – Node 3, with 120 Ω only at Nod
 ## Limitations
 
 - If CAN data stops, the fan keeps its last state.
-- Thresholds are fixed at build time; setting them from a diagnostic tool is planned.
+- Thresholds are fixed at build time. The settings screen is not reachable yet because the four buttons are not implemented; temperature-based fan control, threshold sync to Node 3 and stored settings are pending.
 - Node 3 calls one number and does not retry or fall back to SMS when a call fails.
 
 ## Branches

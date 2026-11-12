@@ -1,7 +1,8 @@
 #include "hal_tft.h"
 
 #include <stddef.h>
-#include <stdlib.h>
+
+#include "hal_tft_graphics.h"
 
 #define ST7735_SWRESET 0x01U
 #define ST7735_SLPOUT 0x11U
@@ -24,10 +25,6 @@
 #define TFT_SWRESET_WAIT_MS 150U
 #define TFT_SLPOUT_WAIT_MS 255U
 #define TFT_DISPON_WAIT_MS 100U
-
-#define TFT_FONT_FIRST_CHAR 32U
-#define TFT_FONT_LAST_CHAR 127U
-#define TFT_FONT_MAX_WIDTH 16U
 
 volatile uint32_t g_tftSPIErrors = 0;
 volatile uint32_t g_tftSPIStatus = HAL_OK;
@@ -135,55 +132,6 @@ static void set_window(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2) {
     write_data(y2);
 }
 
-static void draw_pixel(int32_t x, int32_t y, uint16_t color) {
-    if ((x < 0) || (y < 0) || (x >= (int32_t)TFT_WIDTH) || (y >= (int32_t)TFT_HEIGHT) ||
-        (g_tftSPIErrors != 0U)) {
-        return;
-    }
-
-    set_window((uint8_t)x, (uint8_t)y, (uint8_t)x, (uint8_t)y);
-    write_cmd(ST7735_RAMWR);
-    write_data((uint8_t)(color >> 8));
-    write_data((uint8_t)(color & 0xFFU));
-}
-
-static void stream_bytes(uint8_t *data, uint16_t size);
-
-static void draw_char(uint8_t x, uint8_t y, char ch, const TftFont_t *font, uint16_t color,
-                      uint16_t bg) {
-    if ((g_tftSPIErrors != 0U) || (font->width > TFT_FONT_MAX_WIDTH)) {
-        return;
-    }
-
-    if (((uint16_t)x + font->width > TFT_WIDTH) || ((uint16_t)y + font->height > TFT_HEIGHT)) {
-        return;
-    }
-
-    uint8_t code = (uint8_t)ch;
-    if ((code < TFT_FONT_FIRST_CHAR) || (code > TFT_FONT_LAST_CHAR)) {
-        code = (uint8_t)' ';
-    }
-
-    set_window(x, y, (uint8_t)(x + font->width - 1U), (uint8_t)(y + font->height - 1U));
-    write_cmd(ST7735_RAMWR);
-
-    dc_set(true);
-    cs_set(false);
-
-    for (uint32_t row = 0; row < font->height; row++) {
-        uint16_t bits = font->glyphs[(code - TFT_FONT_FIRST_CHAR) * font->height + row];
-
-        for (uint32_t col = 0; col < font->width; col++) {
-            uint16_t value = ((bits & (0x8000U >> col)) != 0U) ? color : bg;
-            pixel_line[col * 2U] = (uint8_t)(value >> 8);
-            pixel_line[col * 2U + 1U] = (uint8_t)value;
-        }
-        stream_bytes(pixel_line, (uint16_t)(font->width * 2U));
-    }
-
-    cs_set(true);
-}
-
 void hal_tft_init(SPI_HandleTypeDef *hspi, const TftPins_t *pins) {
     tft_spi = hspi;
     g_tftSPIErrors = 0;
@@ -234,10 +182,6 @@ bool hal_tft_ok(void) {
     return (tft_spi != NULL) && (g_tftSPIErrors == 0U);
 }
 
-void hal_tft_fill(uint16_t color) {
-    hal_tft_fill_rect(0U, 0U, TFT_WIDTH, TFT_HEIGHT, color);
-}
-
 static bool valid_rect(uint8_t x, uint8_t y, uint16_t width, uint16_t height) {
     return (g_tftSPIErrors == 0U) && (width > 0U) && (height > 0U) &&
            ((uint16_t)x + width <= TFT_WIDTH) && ((uint16_t)y + height <= TFT_HEIGHT);
@@ -253,24 +197,6 @@ static void stream_bytes(uint8_t *data, uint16_t size) {
     if (status != HAL_OK) {
         g_tftSPIErrors++;
     }
-}
-
-void hal_tft_fill_rect(uint8_t x, uint8_t y, uint8_t width, uint8_t height, uint16_t color) {
-    if (!valid_rect(x, y, width, height)) {
-        return;
-    }
-    for (uint16_t col = 0; col < width; col++) {
-        pixel_line[col * 2U] = (uint8_t)(color >> 8);
-        pixel_line[col * 2U + 1U] = (uint8_t)color;
-    }
-    set_window(x, y, (uint8_t)(x + width - 1U), (uint8_t)(y + height - 1U));
-    write_cmd(ST7735_RAMWR);
-    dc_set(true);
-    cs_set(false);
-    for (uint16_t row = 0; row < height && g_tftSPIErrors == 0U; row++) {
-        stream_bytes(pixel_line, (uint16_t)(width * 2U));
-    }
-    cs_set(true);
 }
 
 void hal_tft_draw_region(uint8_t x, uint8_t y, uint8_t width, uint8_t height,
@@ -299,136 +225,4 @@ void hal_tft_draw_region(uint8_t x, uint8_t y, uint8_t width, uint8_t height,
         stream_bytes(pixel_line, used);
     }
     cs_set(true);
-}
-
-void hal_tft_draw_bitmap(uint8_t x, uint8_t y, uint8_t width, uint8_t height,
-                         const uint8_t *bits, uint16_t color, uint16_t bg, uint8_t scale) {
-    uint16_t scaled_width = (uint16_t)width * scale;
-    uint16_t scaled_height = (uint16_t)height * scale;
-    if ((bits == NULL) || !valid_rect(x, y, scaled_width, scaled_height)) {
-        return;
-    }
-    set_window(x, y, (uint8_t)(x + scaled_width - 1U), (uint8_t)(y + scaled_height - 1U));
-    write_cmd(ST7735_RAMWR);
-    dc_set(true);
-    cs_set(false);
-    for (uint16_t row = 0; row < scaled_height && g_tftSPIErrors == 0U; row++) {
-        for (uint16_t col = 0; col < scaled_width; col++) {
-            uint32_t bit = (uint32_t)(row / scale) * width + col / scale;
-            uint16_t pixel_color = (bits[bit / 8U] & (0x80U >> (bit % 8U))) ? color : bg;
-            pixel_line[col * 2U] = (uint8_t)(pixel_color >> 8);
-            pixel_line[col * 2U + 1U] = (uint8_t)pixel_color;
-        }
-        stream_bytes(pixel_line, (uint16_t)(scaled_width * 2U));
-    }
-    cs_set(true);
-}
-
-static uint16_t blend_alpha(uint16_t color, uint16_t bg, uint8_t alpha) {
-    uint32_t inverse = 15U - alpha;
-    uint32_t red = (((color >> 11) * alpha + (bg >> 11) * inverse + 7U) / 15U);
-    uint32_t green = ((((color >> 5) & 63U) * alpha +
-                       ((bg >> 5) & 63U) * inverse + 7U) / 15U);
-    uint32_t blue = (((color & 31U) * alpha + (bg & 31U) * inverse + 7U) / 15U);
-    return (uint16_t)((red << 11) | (green << 5) | blue);
-}
-
-void hal_tft_draw_alpha(uint8_t x, uint8_t y, uint8_t size, const uint8_t *mask,
-                        uint16_t color, uint16_t bg) {
-    if ((mask == NULL) || !valid_rect(x, y, size, size)) {
-        return;
-    }
-    set_window(x, y, (uint8_t)(x + size - 1U), (uint8_t)(y + size - 1U));
-    write_cmd(ST7735_RAMWR);
-    dc_set(true);
-    cs_set(false);
-    for (uint16_t row = 0U; row < size && g_tftSPIErrors == 0U; row++) {
-        for (uint16_t col = 0U; col < size; col++) {
-            uint16_t index = row * size + col;
-            uint8_t alpha = (mask[index / 2U] >> ((index & 1U) == 0U ? 4U : 0U)) & 15U;
-            uint16_t value = blend_alpha(color, bg, alpha);
-            pixel_line[col * 2U] = (uint8_t)(value >> 8);
-            pixel_line[col * 2U + 1U] = (uint8_t)value;
-        }
-        stream_bytes(pixel_line, (uint16_t)(size * 2U));
-    }
-    cs_set(true);
-}
-
-void hal_tft_draw_string(uint8_t x, uint8_t y, const char *text, const TftFont_t *font,
-                         uint16_t color, uint16_t bg) {
-    if ((text == NULL) || (font == NULL) || (font->glyphs == NULL) || (font->width == 0U) ||
-        (font->height == 0U)) {
-        return;
-    }
-
-    uint16_t cursor_x = x;
-    uint16_t cursor_y = y;
-
-    while ((*text != '\0') && (g_tftSPIErrors == 0U)) {
-        if (*text == '\r') {
-            text++;
-            continue;
-        }
-
-        if (*text == '\n') {
-            cursor_x = 0U;
-            cursor_y += font->height;
-            text++;
-            continue;
-        }
-
-        if (cursor_x + font->width > TFT_WIDTH) {
-            cursor_x = 0U;
-            cursor_y += font->height;
-        }
-
-        if (cursor_y + font->height > TFT_HEIGHT) {
-            break;
-        }
-
-        char code = *text;
-        if (((uint8_t)text[0] == 0xC2U) && ((uint8_t)text[1] == 0xB0U)) {
-            code = 127;
-            text++;
-        }
-        draw_char((uint8_t)cursor_x, (uint8_t)cursor_y, code, font, color, bg);
-        cursor_x += font->width;
-        text++;
-    }
-}
-
-void hal_tft_draw_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color) {
-    if ((x0 >= 0) && (y0 >= 0) && (x1 >= x0) && (y1 >= y0) &&
-        (x1 < (int16_t)TFT_WIDTH) && (y1 < (int16_t)TFT_HEIGHT) &&
-        ((x0 == x1) || (y0 == y1))) {
-        hal_tft_fill_rect((uint8_t)x0, (uint8_t)y0, (uint8_t)(x1 - x0 + 1),
-                          (uint8_t)(y1 - y0 + 1), color);
-        return;
-    }
-    int32_t x = x0;
-    int32_t y = y0;
-    int32_t dx = abs((int)x1 - (int)x0);
-    int32_t dy = -abs((int)y1 - (int)y0);
-    int32_t sx = (x0 < x1) ? 1 : -1;
-    int32_t sy = (y0 < y1) ? 1 : -1;
-    int32_t err = dx + dy;
-
-    while (g_tftSPIErrors == 0U) {
-        draw_pixel(x, y, color);
-
-        if ((x == x1) && (y == y1)) {
-            break;
-        }
-
-        int32_t e2 = 2 * err;
-        if (e2 >= dy) {
-            err += dy;
-            x += sx;
-        }
-        if (e2 <= dx) {
-            err += dx;
-            y += sy;
-        }
-    }
 }

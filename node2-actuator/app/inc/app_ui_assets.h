@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 
+#define UI_ARC_COUNT 61U
+#define UI_TICK_COUNT 13U
+
 typedef struct {
     uint16_t code;
     uint16_t offset;
@@ -22,6 +25,7 @@ extern const UiFont_t ui_font_label;
 extern const UiFont_t ui_font_value;
 extern const UiFont_t ui_font_status;
 extern const UiFont_t ui_font_gas;
+
 typedef struct {
     const uint8_t *mask;
     uint8_t x;
@@ -29,8 +33,9 @@ typedef struct {
     uint8_t width;
     uint8_t height;
 } UiArc_t;
-extern const UiArc_t ui_arc[61];
-extern const UiArc_t ui_ticks[13];
+
+extern const UiArc_t ui_arc[UI_ARC_COUNT];
+extern const UiArc_t ui_ticks[UI_TICK_COUNT];
 extern const uint8_t ui_icon_gas[98];
 extern const uint8_t ui_icon_hot[98];
 extern const uint8_t ui_icon_link[98];
