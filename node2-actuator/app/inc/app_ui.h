@@ -17,11 +17,13 @@ typedef struct {
     uint8_t temperature;
     uint8_t humidity;
     uint16_t gas_raw;
+    uint8_t sensor_faults;
     bool fan_on;
     uint16_t gas_threshold;
     uint8_t temperature_threshold;
     bool temperature_threshold_configured;
     bool edit_mode;
+    bool settings_save_error;
     UiThreshold_t selected_threshold;
 } UiView_t;
 

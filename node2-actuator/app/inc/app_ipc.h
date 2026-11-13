@@ -12,6 +12,7 @@ typedef struct {
     uint8_t temperature;
     uint8_t humidity;
     uint16_t gas_raw;
+    uint8_t sensor_faults;
 } ActuatorCommand_t;
 
 extern QueueHandle_t xActuatorQueue;

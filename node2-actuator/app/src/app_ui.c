@@ -5,7 +5,9 @@
 #endif
 #include <stddef.h>
 
+#include "app_limits.h"
 #include "app_ui_assets.h"
+#include "sensor_status.h"
 #include "hal_tft_graphics.h"
 
 #define UI_GAS_EMA_DIVISOR 4U
@@ -24,15 +26,11 @@
 #define UI_RED 0xFA08U
 #define UI_CYAN 0x5E9FU
 #define UI_PANEL 0x10C4U
-#define UI_GAS_MAX 4095U
 #define UI_WARNING_PERCENT 80U
 #define UI_PERCENT_FULL 100U
 #define UI_BLINK_PERIOD_MS 250U
 #define UI_FAN_FRAME_MS 120U
 #define UI_FAN_FRAME_COUNT 4U
-#define UI_GAS_STEP_RAW 50U
-#define UI_TEMPERATURE_INITIAL_C 40U
-#define UI_TEMPERATURE_MAX_C 125U
 #define UI_RED_DIM 0x8004U
 #define UI_SELECTED_PANEL 0x1947U
 #define UI_HASH_OFFSET 2166136261U
@@ -55,7 +53,8 @@ typedef enum {
     UI_DANGER,
     UI_OFFLINE,
     UI_WAITING,
-    UI_BUS_ERROR
+    UI_BUS_ERROR,
+    UI_SENSOR_ERROR
 } UiState_t;
 
 typedef struct {
@@ -205,6 +204,9 @@ static uint8_t arc_percent(uint8_t segment) {
 }
 
 static UiState_t gas_state(const UiView_t *view) {
+    if ((view->sensor_faults & SENSOR_FAULT_GAS) != 0U) {
+        return UI_SAFE;
+    }
     if (view->gas_raw > view->gas_threshold) {
         return UI_DANGER;
     }
@@ -223,15 +225,18 @@ static UiState_t state(const UiView_t *view) {
         return UI_OFFLINE;
     }
     if (gas_state(view) == UI_DANGER ||
-        (view->temperature_threshold_configured &&
+        (((view->sensor_faults & SENSOR_FAULT_DHT) == 0U) &&
+         view->temperature_threshold_configured &&
          view->temperature > view->temperature_threshold)) {
         return UI_DANGER;
     }
-    return gas_state(view);
+    return view->sensor_faults != 0U ? UI_SENSOR_ERROR : gas_state(view);
 }
 
 static uint16_t state_color(UiState_t current) {
-    static const uint16_t colors[] = {UI_CYAN, UI_AMBER, UI_RED, UI_MUTED, UI_MUTED, UI_AMBER};
+    static const uint16_t colors[] = {
+        UI_CYAN, UI_AMBER, UI_RED, UI_MUTED, UI_MUTED, UI_AMBER, UI_AMBER
+    };
     return colors[current];
 }
 
@@ -256,16 +261,20 @@ static void main_scene(void) {
     };
     UiState_t current = state(&target);
     bool live = available(&target);
-    bool gas_alarm = live && target.gas_raw > target.gas_threshold;
-    bool gas_warn = live && (uint32_t)target.gas_raw * UI_PERCENT_FULL >=
+    bool gas_live = live && (target.sensor_faults & SENSOR_FAULT_GAS) == 0U;
+    bool dht_live = live && (target.sensor_faults & SENSOR_FAULT_DHT) == 0U;
+    bool gas_alarm = gas_live && target.gas_raw > target.gas_threshold;
+    bool gas_warn = gas_live && (uint32_t)target.gas_raw * UI_PERCENT_FULL >=
                            (uint32_t)target.gas_threshold * UI_WARNING_PERCENT;
-    bool hot = live && target.temperature_threshold_configured &&
+    bool hot = dht_live && target.temperature_threshold_configured &&
                target.temperature > target.temperature_threshold;
     bool alarm_lit = blink_on || current != UI_DANGER;
     uint16_t gas_ink = gas_alarm ? UI_RED : UI_AMBER;
     add(17U, 5U, 14U, 14U, ui_icon_gas,
+        live && !gas_live ? UI_AMBER :
         lamp_check || (gas_warn && alarm_lit) ? gas_ink : UI_LINE);
     add(44U, 5U, 14U, 14U, ui_icon_hot,
+        live && !dht_live ? UI_AMBER :
         lamp_check || (hot && alarm_lit) ? UI_RED : UI_LINE);
     add(71U, 5U, 14U, 14U, fans[fan_frame],
         lamp_check || (target.has_data && target.fan_on) ? UI_GREEN : UI_LINE);
@@ -277,7 +286,7 @@ static void main_scene(void) {
         bool redline = arc_percent(i) >= UI_PERCENT_FULL;
         bool lit = (uint32_t)i * UI_GAS_GAUGE_FULL_SCALE_PERCENT <=
                    (uint32_t)gas * (UI_ARC_COUNT - 1U) &&
-                   (live || lamp_check);
+                   (gas_live || lamp_check);
         uint16_t color = redline ? (lit ? UI_RED : UI_RED_DIM) : (lit ? UI_CYAN : UI_LINE);
         add(arc->x, arc->y, arc->width, arc->height, arc->mask, color);
     }
@@ -289,23 +298,27 @@ static void main_scene(void) {
             redline ? UI_RED : UI_MUTED);
     }
     centered(43U, current == UI_WAITING ? "GAS SAFETY" : "GAS", &ui_font_label, UI_MUTED);
-    value_label(lamp_check ? shown_gas : display_gas, live || lamp_check, "");
+    value_label(lamp_check ? shown_gas : display_gas, gas_live || lamp_check, "");
     text(94U - text_width(&ui_font_gas, label), 56U, label, &ui_font_gas,
-         live || lamp_check ? UI_INK : UI_MUTED);
-    if (live || lamp_check) {
+         gas_live || lamp_check ? UI_INK : UI_MUTED);
+    if (gas_live || lamp_check) {
         text(94U, 72U, "%", &ui_font_label, UI_MUTED);
     }
     uint16_t status_ink = state_color(current);
     if (current == UI_DANGER && !blink_on) {
         status_ink = UI_RED_DIM;
     }
-    const char *word = lamp_check ? "READY" : words[current];
-    static const uint8_t *const cues[] = {
-        ui_state_safe, ui_state_warning, ui_state_danger, ui_state_offline, ui_state_waiting
-    };
-    uint8_t status_x = (128U - text_width(&ui_font_status, word) - 18U) / 2U;
-    add(status_x, 87U, 14U, 14U, cues[lamp_check ? UI_SAFE : current], status_ink);
-    text(status_x + 18U, 88U, word, &ui_font_status, status_ink);
+    if (current == UI_SENSOR_ERROR) {
+        centered(88U, "SENSOR ERROR", &ui_font_label, UI_AMBER);
+    } else {
+        const char *word = lamp_check ? "READY" : words[current];
+        static const uint8_t *const cues[] = {
+            ui_state_safe, ui_state_warning, ui_state_danger, ui_state_offline, ui_state_waiting
+        };
+        uint8_t status_x = (128U - text_width(&ui_font_status, word) - 18U) / 2U;
+        add(status_x, 87U, 14U, 14U, cues[lamp_check ? UI_SAFE : current], status_ink);
+        text(status_x + 18U, 88U, word, &ui_font_status, status_ink);
+    }
     add(8U, 122U, 112U, 1U, NULL, UI_LINE);
     add(74U, 127U, 1U, 27U, NULL, UI_LINE);
     text(8U, 127U, "TEMP", &ui_font_small, UI_MUTED);
@@ -316,16 +329,17 @@ static void main_scene(void) {
         text(73U - text_width(&ui_font_small, label), 127U, label, &ui_font_small, UI_MUTED);
     }
     text(81U, 125U, "HUM", &ui_font_label, UI_MUTED);
-    value_label(target.temperature, live, "°C");
+    value_label(target.temperature, dht_live, "°C");
     text(69U - text_width(&ui_font_value, label), 139U, label, &ui_font_value,
          hot ? UI_RED : UI_INK);
-    value_label(target.humidity > 100U ? 100U : target.humidity, live, "%");
+    value_label(target.humidity > 100U ? 100U : target.humidity, dht_live, "%");
     text(120U - text_width(&ui_font_value, label), 139U, label, &ui_font_value, UI_INK);
 }
 
 static void settings_scene(void) {
     centered(9U, "SETTINGS", &ui_font_status, UI_INK);
-    centered(24U, "SAFETY LIMITS", &ui_font_label, UI_MUTED);
+    centered(24U, target.settings_save_error ? "SAVE FAILED" : "SAFETY LIMITS",
+             &ui_font_label, target.settings_save_error ? UI_RED : UI_MUTED);
     for (uint8_t i = 0U; i < 2U; i++) {
         bool gas = i == 0U;
         bool selected = target.selected_threshold ==
@@ -339,7 +353,7 @@ static void settings_scene(void) {
             add(123U, y, 1U, 39U, NULL, UI_CYAN);
             add(99U, y + 2U, 22U, 35U, NULL, UI_LINE);
         }
-        text(12U, y + 4U, gas ? "GAS LIMIT" : "TEMP MAX", &ui_font_label,
+        text(12U, y + 4U, gas ? "GAS LIMIT" : "TEMP LIMIT", &ui_font_label,
              selected ? UI_CYAN : UI_MUTED);
         value_label(gas ? target.gas_threshold : target.temperature_threshold,
                     gas || target.temperature_threshold_configured,
@@ -349,7 +363,7 @@ static void settings_scene(void) {
             text(98U - text_width(&ui_font_small, "NOW"), y + 4U,
                  "NOW", &ui_font_small, UI_MUTED);
             set_label("");
-            if (available(&target)) {
+            if (available(&target) && (target.sensor_faults & SENSOR_FAULT_GAS) == 0U) {
                 number(target.gas_raw);
             } else {
                 append("--");
@@ -412,17 +426,17 @@ static void tile_row(uint8_t row, uint16_t *pixels) {
 }
 
 static uint32_t hash_value(uint32_t hash, uint32_t value) {
-    return (hash ^ value) * 16777619U;
+    return (hash ^ value) * UI_HASH_PRIME;
 }
 
 static void stream_scene(void) {
-    uint32_t hash = 2166136261U;
+    uint32_t hash = UI_HASH_OFFSET;
     for (uint16_t i = 0U; i < UI_TILE_COUNT; i++) {
-        next_tile_hash[i] = 2166136261U;
+        next_tile_hash[i] = UI_HASH_OFFSET;
     }
     for (uint8_t i = 0U; i < op_count; i++) {
         const UiOp_t *op = &ops[i];
-        uint32_t signature = hash_value(2166136261U, (uint32_t)(uintptr_t)op->mask);
+        uint32_t signature = hash_value(UI_HASH_OFFSET, (uint32_t)(uintptr_t)op->mask);
         signature = hash_value(signature, op->color);
         signature = hash_value(signature, op->x | ((uint32_t)op->y << 8) |
                                ((uint32_t)op->width << 16) | ((uint32_t)op->height << 24));
@@ -487,7 +501,7 @@ void app_ui_reset(void) {
 
 void app_ui_render(const UiView_t *view) {
     if (view != NULL) {
-        bool live = available(view);
+        bool live = available(view) && (view->sensor_faults & SENSOR_FAULT_GAS) == 0U;
         bool sample = !valid || view->sample_id != target.sample_id ||
                       view->gas_raw != target.gas_raw;
         bool boundary = !valid || state(view) != state(&target) ||
@@ -524,15 +538,17 @@ void app_ui_tick(uint32_t now_ms) {
         clock_started = true;
     }
     uint32_t uptime = now_ms - start_ms;
-    lamp_check = state(&target) != UI_BUS_ERROR && state(&target) != UI_WARNING &&
-                 state(&target) != UI_DANGER && uptime < UI_SWEEP_MS + UI_LAYOUT_MS;
+    lamp_check = target.sensor_faults == 0U && state(&target) != UI_BUS_ERROR &&
+                 state(&target) != UI_WARNING && state(&target) != UI_DANGER &&
+                 uptime < UI_SWEEP_MS + UI_LAYOUT_MS;
     if (lamp_check) {
         uint32_t sweep = uptime > UI_LAYOUT_MS ? uptime - UI_LAYOUT_MS : 0U;
         uint32_t phase = sweep < UI_SWEEP_MS / 2U ? sweep : UI_SWEEP_MS - sweep;
         shown_gas = (uint16_t)(phase * UI_GAS_GAUGE_FULL_SCALE_PERCENT /
                                (UI_SWEEP_MS / 2U));
     } else {
-        shown_gas = available(&target) ? display_gas : 0U;
+        shown_gas = available(&target) && (target.sensor_faults & SENSOR_FAULT_GAS) == 0U ?
+                    display_gas : 0U;
     }
     blink_on = (now_ms / UI_BLINK_PERIOD_MS) % 2U == 0U;
     fan_frame = target.has_data && target.fan_on ?
@@ -577,22 +593,36 @@ void app_ui_button(UiView_t *view, UiButton_t button) {
             view->selected_threshold = view->selected_threshold == UI_THRESHOLD_GAS ?
                                        UI_THRESHOLD_TEMPERATURE : UI_THRESHOLD_GAS;
         }
-    } else if (view->edit_mode) {
+    } else if (view->edit_mode &&
+               ((button == UI_BUTTON_PLUS) || (button == UI_BUTTON_MINUS))) {
         bool increase = button == UI_BUTTON_PLUS;
         if (view->selected_threshold == UI_THRESHOLD_GAS) {
-            uint16_t gas = view->gas_threshold > UI_GAS_MAX ? UI_GAS_MAX : view->gas_threshold;
+            uint16_t gas = view->gas_threshold;
+            if (gas < APP_GAS_LIMIT_MIN_RAW) {
+                gas = APP_GAS_LIMIT_MIN_RAW;
+            } else if (gas > APP_GAS_LIMIT_MAX_RAW) {
+                gas = APP_GAS_LIMIT_MAX_RAW;
+            }
             view->gas_threshold = increase ?
-                (gas < UI_GAS_MAX - UI_GAS_STEP_RAW ? gas + UI_GAS_STEP_RAW : UI_GAS_MAX) :
-                (gas > UI_GAS_STEP_RAW ? gas - UI_GAS_STEP_RAW : 0U);
+                (gas < APP_GAS_LIMIT_MAX_RAW - APP_GAS_LIMIT_STEP_RAW ?
+                 gas + APP_GAS_LIMIT_STEP_RAW : APP_GAS_LIMIT_MAX_RAW) :
+                (gas > APP_GAS_LIMIT_MIN_RAW + APP_GAS_LIMIT_STEP_RAW ?
+                 gas - APP_GAS_LIMIT_STEP_RAW : APP_GAS_LIMIT_MIN_RAW);
         } else if (!view->temperature_threshold_configured) {
-            view->temperature_threshold = UI_TEMPERATURE_INITIAL_C;
+            view->temperature_threshold = APP_TEMPERATURE_LIMIT_DEFAULT_C;
             view->temperature_threshold_configured = true;
-        } else if (increase && view->temperature_threshold < UI_TEMPERATURE_MAX_C) {
-            view->temperature_threshold++;
-        } else if (!increase && view->temperature_threshold != 0U) {
-            view->temperature_threshold--;
-        } else if (!increase) {
-            view->temperature_threshold_configured = false;
+        } else {
+            uint8_t temperature = view->temperature_threshold;
+            if (temperature < APP_TEMPERATURE_LIMIT_MIN_C) {
+                temperature = APP_TEMPERATURE_LIMIT_MIN_C;
+            } else if (temperature > APP_TEMPERATURE_LIMIT_MAX_C) {
+                temperature = APP_TEMPERATURE_LIMIT_MAX_C;
+            }
+            view->temperature_threshold = increase ?
+                (temperature < APP_TEMPERATURE_LIMIT_MAX_C ?
+                 temperature + APP_TEMPERATURE_LIMIT_STEP_C : APP_TEMPERATURE_LIMIT_MAX_C) :
+                (temperature > APP_TEMPERATURE_LIMIT_MIN_C ?
+                 temperature - APP_TEMPERATURE_LIMIT_STEP_C : APP_TEMPERATURE_LIMIT_MIN_C);
         }
     }
     app_ui_render(view);

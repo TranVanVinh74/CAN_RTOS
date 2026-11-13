@@ -282,6 +282,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : BUTTON_SELECT_Pin BUTTON_PLUS_Pin BUTTON_MINUS_Pin BUTTON_SAVE_Pin */
+  GPIO_InitStruct.Pin = BUTTON_SELECT_Pin|BUTTON_PLUS_Pin|BUTTON_MINUS_Pin|BUTTON_SAVE_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
   /* USER CODE END MX_GPIO_Init_2 */
