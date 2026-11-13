@@ -60,4 +60,5 @@ CLAUDE.md
 .claude/
 AGENTS.md
 
-tools/
+# Local UI development tools and generated previews
+/tools/
