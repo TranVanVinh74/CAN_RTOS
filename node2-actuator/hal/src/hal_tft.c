@@ -14,7 +14,7 @@
 #define ST7735_MADCTL 0x36U
 #define ST7735_COLMOD 0x3AU
 
-#define ST7735_MADCTL_BGR 0x08U
+#define ST7735_MADCTL_RGB 0x00U
 #define ST7735_COLMOD_RGB565 0x05U
 #define ST7735_CMD_LIST_END 0xFFU
 
@@ -165,7 +165,7 @@ void hal_tft_init(SPI_HandleTypeDef *hspi, const TftPins_t *pins) {
     send_cmd_list(st7735_init_cmds);
 
     write_cmd(ST7735_MADCTL);
-    write_data(ST7735_MADCTL_BGR);
+    write_data(ST7735_MADCTL_RGB);
 
     write_cmd(ST7735_COLMOD);
     write_data(ST7735_COLMOD_RGB565);
