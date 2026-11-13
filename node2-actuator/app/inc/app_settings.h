@@ -4,10 +4,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef struct {
-    uint16_t gas_limit_raw;
-    uint8_t temperature_limit_c;
-} AppSettings_t;
+#include "alert_thresholds.h"
+
+typedef AlertThresholds_t AppSettings_t;
 
 typedef enum {
     SETTINGS_UNCHANGED,

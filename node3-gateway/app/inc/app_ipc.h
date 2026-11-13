@@ -6,6 +6,7 @@
 
 #include "FreeRTOS.h"
 #include "queue.h"
+#include "alert_thresholds.h"
 
 typedef struct {
     uint8_t temperature;
@@ -15,6 +16,7 @@ typedef struct {
 } SensorData_t;
 
 extern QueueHandle_t xSensorQueue;
+extern QueueHandle_t xThresholdQueue;
 
 bool app_ipc_init(void);
 

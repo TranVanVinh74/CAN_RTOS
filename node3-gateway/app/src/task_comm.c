@@ -9,6 +9,7 @@
 #include "app_call.h"
 #include "app_cfg.h"
 #include "app_ipc.h"
+#include "alert_thresholds.h"
 #include "bsp_board.h"
 #include "can_protocol.h"
 #include "hal_a7680c.h"
@@ -26,7 +27,15 @@ volatile uint32_t g_canQueueErrorCount = 0;
 volatile uint32_t g_sensorSeen = 0;
 volatile uint32_t g_sensorFresh = 0;
 volatile uint32_t g_sensorAgeMs = 0;
-volatile uint32_t g_gasAlarm = 0;
+volatile uint32_t g_alarmActive = 0;
+volatile uint32_t g_thresholdRxCount = 0;
+volatile uint32_t g_thresholdProcessedCount = 0;
+volatile uint32_t g_thresholdInvalidCount = 0;
+volatile uint32_t g_thresholdSeen = 0;
+volatile AlertThresholds_t g_activeThresholds = {
+    .gas_limit_raw = ALERT_GAS_DEFAULT_RAW,
+    .temperature_limit_c = ALERT_TEMPERATURE_DEFAULT_C,
+};
 volatile uint32_t g_taskLoops = 0;
 volatile uint32_t g_atFailCount = 0;
 
@@ -34,7 +43,11 @@ static TaskHandle_t xCommTaskHandle = NULL;
 
 static SensorData_t latest_sensor = {0};
 static bool sensor_seen = false;
-static bool gas_alarm = false;
+static bool alarm_active = false;
+static AlertThresholds_t active_thresholds = {
+    .gas_limit_raw = ALERT_GAS_DEFAULT_RAW,
+    .temperature_limit_c = ALERT_TEMPERATURE_DEFAULT_C,
+};
 
 static uint32_t now_ms(void) {
     return (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
@@ -47,6 +60,27 @@ static bool is_sensor_frame(const CanRxFrame_t *frame) {
 
 static void on_can_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
     SensorData_t sample = {0};
+
+    if (frame->std_id == CAN_ID_THRESHOLDS) {
+        AlertThresholds_t thresholds;
+        if (frame->is_extended || frame->is_remote || (frame->dlc != CAN_DLC_THRESHOLDS)) {
+            g_thresholdInvalidCount++;
+            g_canInvalidCount++;
+            return;
+        }
+        can_unpack_thresholds(frame->data, &thresholds.gas_limit_raw,
+                              &thresholds.temperature_limit_c);
+        if (!alert_thresholds_valid(&thresholds)) {
+            g_thresholdInvalidCount++;
+            g_canInvalidCount++;
+            return;
+        }
+        g_thresholdRxCount++;
+        if (xQueueOverwriteFromISR(xThresholdQueue, &thresholds, task_woken) != pdPASS) {
+            g_canQueueErrorCount++;
+        }
+        return;
+    }
 
     if (!is_sensor_frame(frame)) {
         g_canInvalidCount++;
@@ -82,15 +116,20 @@ static void start_can(void) {
 }
 
 static void update_alarm(void) {
-    if (latest_sensor.gas_raw > GAS_ALERT_ON_THRESHOLD) {
-        gas_alarm = true;
-    } else if (latest_sensor.gas_raw < GAS_ALERT_OFF_THRESHOLD) {
-        gas_alarm = false;
-    }
+    alarm_active = alert_should_run(alarm_active, latest_sensor.gas_raw,
+                                    latest_sensor.temperature, &active_thresholds);
 }
 
 static void sensor_update(void) {
     SensorData_t sample;
+    AlertThresholds_t thresholds;
+
+    if (xQueueReceive(xThresholdQueue, &thresholds, 0U) == pdPASS) {
+        active_thresholds = thresholds;
+        g_activeThresholds = thresholds;
+        g_thresholdProcessedCount++;
+        g_thresholdSeen = 1U;
+    }
 
     if (xQueueReceive(xSensorQueue, &sample, 0) == pdPASS) {
         latest_sensor = sample;
@@ -104,7 +143,7 @@ static void sensor_update(void) {
     if (!sensor_seen) {
         g_sensorFresh = 0;
         g_sensorAgeMs = 0;
-        g_gasAlarm = 0;
+        g_alarmActive = 0;
         return;
     }
 
@@ -115,7 +154,7 @@ static void sensor_update(void) {
         update_alarm();
     }
 
-    g_gasAlarm = gas_alarm ? 1U : 0U;
+    g_alarmActive = ((g_sensorFresh != 0U) && alarm_active) ? 1U : 0U;
 }
 
 static bool check_modem(uint32_t now, uint32_t *last_check_ms, bool *checked) {
@@ -139,7 +178,7 @@ static bool check_modem(uint32_t now, uint32_t *last_check_ms, bool *checked) {
 }
 
 static bool alarm_wants_call(void) {
-    return (g_sensorFresh != 0U) && gas_alarm && (latest_sensor.gas_raw > GAS_ALERT_ON_THRESHOLD);
+    return (g_sensorFresh != 0U) && alarm_active;
 }
 
 static void prvCommTask(void *pvParameters) {
@@ -148,6 +187,7 @@ static void prvCommTask(void *pvParameters) {
     uint32_t last_at_check_ms = 0;
     uint32_t last_idle_check_ms = 0;
     bool at_checked = false;
+    bool automatic_call = false;
 
     start_can();
 
@@ -163,8 +203,14 @@ static void prvCommTask(void *pvParameters) {
         app_call_update_cooldown(now);
 
         if (app_call_is_active()) {
+            if (automatic_call && !alarm_wants_call()) {
+                g_hangupRequest = 1U;
+            }
             app_call_poll_modem();
             app_call_service();
+            if (!app_call_is_active()) {
+                automatic_call = false;
+            }
             if (g_callStage == CALL_STAGE_MODEM_RESET) {
                 modem_wait_start = now_ms();
                 at_checked = false;
@@ -209,6 +255,7 @@ static void prvCommTask(void *pvParameters) {
         bool manual_request = (g_callRequest == 1U);
         if ((g_atOK != 0U) && (alarm_wants_call() || manual_request) &&
             app_call_cooldown_over(now_ms())) {
+            automatic_call = !manual_request;
             app_call_start(APP_ALERT_PHONE);
         }
 

@@ -21,12 +21,7 @@ static AppSettings_t saved;
 static bool retry_required;
 
 static bool valid_settings(const AppSettings_t *settings) {
-    return (settings != NULL) &&
-           (settings->gas_limit_raw >= APP_GAS_LIMIT_MIN_RAW) &&
-           (settings->gas_limit_raw <= APP_GAS_LIMIT_MAX_RAW) &&
-           ((settings->gas_limit_raw - APP_GAS_LIMIT_MIN_RAW) % APP_GAS_LIMIT_STEP_RAW == 0U) &&
-           (settings->temperature_limit_c >= APP_TEMPERATURE_LIMIT_MIN_C) &&
-           (settings->temperature_limit_c <= APP_TEMPERATURE_LIMIT_MAX_C);
+    return alert_thresholds_valid(settings);
 }
 
 static uint32_t checksum(const uint16_t words[SETTINGS_RECORD_WORDS]) {

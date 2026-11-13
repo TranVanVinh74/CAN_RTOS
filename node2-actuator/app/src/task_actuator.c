@@ -7,6 +7,7 @@
 #include "app_fan.h"
 #include "app_ipc.h"
 #include "app_settings.h"
+#include "app_threshold_sync.h"
 #include "app_ui.h"
 #include "bsp_board.h"
 #include "can_protocol.h"
@@ -33,6 +34,7 @@ volatile uint32_t g_canQueueFullCount = 0;
 volatile uint32_t g_canInvalidCount = 0;
 volatile uint32_t g_buttonPressCount[BUTTON_COUNT] = {0};
 volatile UiView_t g_uiDebug = {0};
+volatile AlertThresholds_t g_activeThresholds = {0};
 
 static TaskHandle_t xActuatorTaskHandle = NULL;
 
@@ -132,6 +134,8 @@ static void prvActuatorTask(void *pvParameters) {
     (void)app_settings_load(&settings);
     view.gas_threshold = settings.gas_limit_raw;
     view.temperature_threshold = settings.temperature_limit_c;
+    g_activeThresholds = settings;
+    app_threshold_sync_init();
     TickType_t last_sensor_tick = 0;
 
     app_ui_reset();
@@ -151,7 +155,8 @@ static void prvActuatorTask(void *pvParameters) {
                                 pdMS_TO_TICKS(BUTTON_SCAN_MS) - elapsed : 0U;
 
         if (xQueueReceive(xActuatorQueue, &cmd, wait_ticks) == pdPASS) {
-            hal_relay_set(app_fan_should_run(hal_relay_is_on(), cmd.gas_raw));
+            hal_relay_set(app_fan_should_run(hal_relay_is_on(), cmd.gas_raw,
+                                             cmd.temperature, &settings));
             cmd.fan_state = hal_relay_is_on() ? 1U : 0U;
 
             g_node2Debug = cmd;
@@ -169,7 +174,20 @@ static void prvActuatorTask(void *pvParameters) {
         TickType_t now = xTaskGetTickCount();
         if ((TickType_t)(now - last_button_tick) >= pdMS_TO_TICKS(BUTTON_SCAN_MS)) {
             last_button_tick = now;
-            (void)process_buttons(&view, &settings, now * portTICK_PERIOD_MS);
+            bool changed = process_buttons(&view, &settings, now * portTICK_PERIOD_MS);
+            if (changed && view.has_data &&
+                ((TickType_t)(now - last_sensor_tick) <=
+                 pdMS_TO_TICKS(SCREEN_STALE_TIMEOUT_MS))) {
+                hal_relay_set(app_fan_should_run(hal_relay_is_on(), view.gas_raw,
+                                                 view.temperature, &settings));
+                view.fan_on = hal_relay_is_on();
+                g_node2Debug.fan_state = view.fan_on ? 1U : 0U;
+            }
+            g_activeThresholds = settings;
+        }
+
+        if (can_started) {
+            app_threshold_sync_update(&settings, xTaskGetTickCount() * portTICK_PERIOD_MS);
         }
 
         view.stale = view.has_data &&
