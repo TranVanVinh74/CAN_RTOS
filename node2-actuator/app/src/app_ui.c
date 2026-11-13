@@ -324,7 +324,8 @@ static void main_scene(void) {
 
 static void settings_scene(void) {
     centered(9U, "SETTINGS", &ui_font_status, UI_INK);
-    centered(24U, "SAFETY LIMITS", &ui_font_label, UI_MUTED);
+    centered(24U, target.settings_save_error ? "SAVE FAILED" : "SAFETY LIMITS",
+             &ui_font_label, target.settings_save_error ? UI_RED : UI_MUTED);
     for (uint8_t i = 0U; i < 2U; i++) {
         bool gas = i == 0U;
         bool selected = target.selected_threshold ==

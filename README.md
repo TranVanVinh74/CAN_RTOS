@@ -68,7 +68,7 @@ Wire the CAN bus as a line Node 1 – Node 2 – Node 3, with 120 Ω only at Nod
 ## Limitations
 
 - If CAN data stops, the fan keeps its last state.
-- Node2 buttons edit gas 500–3800 (step 50) and temperature 30–50 °C (step 1) in RAM. PB12 SELECT, PB13 PLUS, PB14 MINUS, PB15 SAVE; connect each button to GND with internal pull-ups. SAVE exits SETTINGS; flash persistence and applying edited limits to relay/Node3 are pending.
+- Node2 buttons edit gas 500–3800 (step 50) and temperature 30–50 °C (step 1). SAVE stores changed limits in the final 1 KB flash page with CRC32; invalid records use 2000/40 °C defaults. A failed SAVE stays in SETTINGS. These limits are display settings at this milestone; applying them to the relay and synchronizing Node3 are pending.
 - Node 3 calls one number and does not retry or fall back to SMS when a call fails.
 
 ## Branches

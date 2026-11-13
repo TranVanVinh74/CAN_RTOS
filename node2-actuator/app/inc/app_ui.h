@@ -22,6 +22,7 @@ typedef struct {
     uint8_t temperature_threshold;
     bool temperature_threshold_configured;
     bool edit_mode;
+    bool settings_save_error;
     UiThreshold_t selected_threshold;
 } UiView_t;
 

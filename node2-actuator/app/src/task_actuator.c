@@ -6,6 +6,7 @@
 #include "app_cfg.h"
 #include "app_fan.h"
 #include "app_ipc.h"
+#include "app_settings.h"
 #include "app_ui.h"
 #include "bsp_board.h"
 #include "can_protocol.h"
@@ -35,7 +36,7 @@ volatile UiView_t g_uiDebug = {0};
 
 static TaskHandle_t xActuatorTaskHandle = NULL;
 
-static void process_buttons(UiView_t *view, uint32_t now_ms) {
+static bool process_buttons(UiView_t *view, AppSettings_t *active, uint32_t now_ms) {
     static const UiButton_t ui_buttons[BUTTON_COUNT] = {
         [BUTTON_SELECT] = UI_BUTTON_SELECT,
         [BUTTON_PLUS] = UI_BUTTON_PLUS,
@@ -43,12 +44,30 @@ static void process_buttons(UiView_t *view, uint32_t now_ms) {
         [BUTTON_SAVE] = UI_BUTTON_SAVE,
     };
     uint8_t events = hal_buttons_poll(now_ms);
+    bool changed = false;
+
     for (uint8_t i = 0U; i < BUTTON_COUNT; i++) {
         if ((events & (1U << i)) != 0U) {
             g_buttonPressCount[i]++;
+            if ((i == BUTTON_SAVE) && view->edit_mode) {
+                AppSettings_t settings = {
+                    .gas_limit_raw = view->gas_threshold,
+                    .temperature_limit_c = view->temperature_threshold,
+                };
+                SettingsSaveResult_t result = app_settings_save(&settings);
+                view->settings_save_error = (result == SETTINGS_SAVE_ERROR) ||
+                                            (result == SETTINGS_INVALID);
+                if (view->settings_save_error) {
+                    continue;
+                }
+                changed = (settings.gas_limit_raw != active->gas_limit_raw) ||
+                          (settings.temperature_limit_c != active->temperature_limit_c);
+                *active = settings;
+            }
             app_ui_button(view, ui_buttons[i]);
         }
     }
+    return changed;
 }
 
 static bool is_sensor_frame(const CanRxFrame_t *frame) {
@@ -109,6 +128,10 @@ static void prvActuatorTask(void *pvParameters) {
         .temperature_threshold_configured = true,
         .edit_mode = false,
     };
+    AppSettings_t settings;
+    (void)app_settings_load(&settings);
+    view.gas_threshold = settings.gas_limit_raw;
+    view.temperature_threshold = settings.temperature_limit_c;
     TickType_t last_sensor_tick = 0;
 
     app_ui_reset();
@@ -146,7 +169,7 @@ static void prvActuatorTask(void *pvParameters) {
         TickType_t now = xTaskGetTickCount();
         if ((TickType_t)(now - last_button_tick) >= pdMS_TO_TICKS(BUTTON_SCAN_MS)) {
             last_button_tick = now;
-            process_buttons(&view, now * portTICK_PERIOD_MS);
+            (void)process_buttons(&view, &settings, now * portTICK_PERIOD_MS);
         }
 
         view.stale = view.has_data &&
