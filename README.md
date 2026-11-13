@@ -35,6 +35,7 @@ flowchart LR
 - Four active-low buttons on Node 2: PB12 SELECT opens settings and selects a limit, PB13 PLUS increases it, PB14 MINUS decreases it, PB15 SAVE stores changed limits in flash and exits. Gas limits range from 500 to 3800 raw ADC counts in steps of 50; temperature limits range from 30 to 50 °C in steps of 1 °C. Each press produces one event after debounce; holding a button does not repeat.
 - Node 2 restores saved limits at boot. Its final 1 KB flash page is reserved for a versioned record with CRC32; an empty or invalid record falls back to gas 2000 and temperature 40 °C. SAVE without changes skips the flash write; a write failure keeps SETTINGS open and shows SAVE FAILED.
 - Node 2 sends committed limits in standard CAN frame `0x200` (3 bytes: gas high byte, gas low byte, temperature) at startup, after a changed SAVE and every 1 s. Node 3 retains the last valid limits in RAM, using 2000/40 °C before the first valid frame. Settings edits remain drafts until SAVE succeeds.
+- Sensor frame `0x100` has 5 bytes: temperature, humidity, gas high byte, gas low byte, error flags (bit 0: MQ-5 ADC read failure; bit 1: DHT11 read failure; other bits must be zero). Failed readings are hidden as `--` on the TFT with SENSOR ERROR unless a valid reading requires DANGER. During a sensor fault, only a valid reading above its limit can trigger a call; the fan can turn on but holds its state until both sensors recover and confirm values below the off limits.
 - Cellular VoLTE call alert with freshness check, 60 s minimum interval between call attempts and a 30 s call timeout.
 - Modem replies received by interrupt into a ring buffer; call-end and restart indications update the call state when received. Rejection without a call-end indication is handled by the 30 s call timeout.
 - Automatic calls request hang-up when the alarm clears or sensor data becomes stale. Manual debug calls keep their existing timeout/hang-up behavior.
@@ -44,7 +45,7 @@ flowchart LR
 
 | Folder | Content |
 |---|---|
-| `common/` | `can_protocol.h`: shared wire definitions; `alert_thresholds.h`: shared limit validation and hysteresis |
+| `common/` | `can_protocol.h`: shared wire definitions; `alert_thresholds.h`: shared limit validation and hysteresis; `sensor_status.h`: error flags and valid-reading policies |
 | `node1-sensor/` | Sensor ECU firmware |
 | `node2-actuator/` | Display & actuator ECU firmware |
 | `node3-gateway/` | Cellular alert gateway firmware |
@@ -75,6 +76,7 @@ Connect each Node 2 button between its GPIO (PB12–PB15) and GND. The GPIOs use
 ## Limitations
 
 - If CAN data stops, the fan keeps its last state.
+- Error flags report driver read failures. An unplugged MQ-5 analog wire can still produce successful ADC conversions and is not reliably detected by these flags. Firmware using the former 4-byte sensor frame is incompatible; update all three nodes together.
 - Automatic CAN bus-off recovery is enabled only on Node 2. Node 1 and Node 3 have no application recovery path for bus-off.
 - There is no threshold acknowledgement or config expiry. Node 3 retains its last valid limits if Node 2 disappears; rebooting Node 3 restores defaults until the next valid threshold frame. Sensor freshness is tracked separately.
 - Settings use one flash page: a power interruption during erase/write can discard the previous settings, in which case boot uses defaults. Mass erase or firmware that uses that page can also remove settings.
@@ -92,5 +94,3 @@ Connect each Node 2 button between its GPIO (PB12–PB15) and GND. The GPIOs use
 ## License
 
 The firmware written for this project is released under the MIT License (see `LICENSE`). STM32 HAL, CMSIS and FreeRTOS keep their own licenses, included in their folders. The fonts (Noto Sans, SIL Open Font License 1.1) and icons (Material Symbols, Apache License 2.0) drawn on the Node 2 display are listed with their licenses in `THIRD_PARTY.md`.
-
-Sensor frame `0x100` remains 4 bytes: temperature, humidity, gas high byte, gas low byte. Sensor validity flags are not implemented at this milestone.

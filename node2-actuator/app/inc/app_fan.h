@@ -6,7 +6,7 @@
 
 #include "alert_thresholds.h"
 
-bool app_fan_should_run(bool running, uint16_t gas_raw, uint8_t temperature_c,
+bool app_fan_should_run(bool running, uint16_t gas_raw, uint8_t temperature_c, uint8_t sensor_faults,
                         const AlertThresholds_t *thresholds);
 
 #endif

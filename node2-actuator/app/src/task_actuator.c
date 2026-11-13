@@ -11,6 +11,7 @@
 #include "app_ui.h"
 #include "bsp_board.h"
 #include "can_protocol.h"
+#include "sensor_status.h"
 #include "hal_buttons.h"
 #include "hal_can.h"
 #include "hal_relay.h"
@@ -85,7 +86,12 @@ static void on_can_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
         return;
     }
 
-    can_unpack_sensor(frame->data, &cmd.temperature, &cmd.humidity, &cmd.gas_raw);
+    can_unpack_sensor(frame->data, &cmd.temperature, &cmd.humidity, &cmd.gas_raw,
+                      &cmd.sensor_faults);
+    if (!sensor_faults_valid(cmd.sensor_faults)) {
+        g_canInvalidCount++;
+        return;
+    }
     g_canRxCount++;
 
     if (xQueueSendFromISR(xActuatorQueue, &cmd, task_woken) != pdPASS) {
@@ -156,7 +162,7 @@ static void prvActuatorTask(void *pvParameters) {
 
         if (xQueueReceive(xActuatorQueue, &cmd, wait_ticks) == pdPASS) {
             hal_relay_set(app_fan_should_run(hal_relay_is_on(), cmd.gas_raw,
-                                             cmd.temperature, &settings));
+                                             cmd.temperature, cmd.sensor_faults, &settings));
             cmd.fan_state = hal_relay_is_on() ? 1U : 0U;
 
             g_node2Debug = cmd;
@@ -168,6 +174,7 @@ static void prvActuatorTask(void *pvParameters) {
             view.temperature = cmd.temperature;
             view.humidity = cmd.humidity;
             view.gas_raw = cmd.gas_raw;
+            view.sensor_faults = cmd.sensor_faults;
             view.fan_on = cmd.fan_state != 0U;
         }
 
@@ -179,7 +186,7 @@ static void prvActuatorTask(void *pvParameters) {
                 ((TickType_t)(now - last_sensor_tick) <=
                  pdMS_TO_TICKS(SCREEN_STALE_TIMEOUT_MS))) {
                 hal_relay_set(app_fan_should_run(hal_relay_is_on(), view.gas_raw,
-                                                 view.temperature, &settings));
+                                                 view.temperature, view.sensor_faults, &settings));
                 view.fan_on = hal_relay_is_on();
                 g_node2Debug.fan_state = view.fan_on ? 1U : 0U;
             }

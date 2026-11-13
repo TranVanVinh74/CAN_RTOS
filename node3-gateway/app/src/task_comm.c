@@ -12,6 +12,7 @@
 #include "alert_thresholds.h"
 #include "bsp_board.h"
 #include "can_protocol.h"
+#include "sensor_status.h"
 #include "hal_a7680c.h"
 #include "hal_can.h"
 
@@ -87,7 +88,12 @@ static void on_can_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
         return;
     }
 
-    can_unpack_sensor(frame->data, &sample.temperature, &sample.humidity, &sample.gas_raw);
+    can_unpack_sensor(frame->data, &sample.temperature, &sample.humidity, &sample.gas_raw,
+                      &sample.sensor_faults);
+    if (!sensor_faults_valid(sample.sensor_faults)) {
+        g_canInvalidCount++;
+        return;
+    }
     sample.received_ms = (uint32_t)(xTaskGetTickCountFromISR() * portTICK_PERIOD_MS);
     g_canRxCount++;
 
@@ -116,8 +122,9 @@ static void start_can(void) {
 }
 
 static void update_alarm(void) {
-    alarm_active = alert_should_run(alarm_active, latest_sensor.gas_raw,
-                                    latest_sensor.temperature, &active_thresholds);
+    alarm_active = sensor_alarm_should_run(alarm_active, latest_sensor.gas_raw,
+                                           latest_sensor.temperature, latest_sensor.sensor_faults,
+                                           &active_thresholds);
 }
 
 static void sensor_update(void) {
