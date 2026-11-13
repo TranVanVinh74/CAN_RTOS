@@ -5,6 +5,7 @@
 #endif
 #include <stddef.h>
 
+#include "app_limits.h"
 #include "app_ui_assets.h"
 #include "hal_tft_graphics.h"
 
@@ -24,15 +25,11 @@
 #define UI_RED 0xFA08U
 #define UI_CYAN 0x5E9FU
 #define UI_PANEL 0x10C4U
-#define UI_GAS_MAX 4095U
 #define UI_WARNING_PERCENT 80U
 #define UI_PERCENT_FULL 100U
 #define UI_BLINK_PERIOD_MS 250U
 #define UI_FAN_FRAME_MS 120U
 #define UI_FAN_FRAME_COUNT 4U
-#define UI_GAS_STEP_RAW 50U
-#define UI_TEMPERATURE_INITIAL_C 40U
-#define UI_TEMPERATURE_MAX_C 125U
 #define UI_RED_DIM 0x8004U
 #define UI_SELECTED_PANEL 0x1947U
 #define UI_HASH_OFFSET 2166136261U
@@ -231,7 +228,9 @@ static UiState_t state(const UiView_t *view) {
 }
 
 static uint16_t state_color(UiState_t current) {
-    static const uint16_t colors[] = {UI_CYAN, UI_AMBER, UI_RED, UI_MUTED, UI_MUTED, UI_AMBER};
+    static const uint16_t colors[] = {
+        UI_CYAN, UI_AMBER, UI_RED, UI_MUTED, UI_MUTED, UI_AMBER
+    };
     return colors[current];
 }
 
@@ -339,7 +338,7 @@ static void settings_scene(void) {
             add(123U, y, 1U, 39U, NULL, UI_CYAN);
             add(99U, y + 2U, 22U, 35U, NULL, UI_LINE);
         }
-        text(12U, y + 4U, gas ? "GAS LIMIT" : "TEMP MAX", &ui_font_label,
+        text(12U, y + 4U, gas ? "GAS LIMIT" : "TEMP LIMIT", &ui_font_label,
              selected ? UI_CYAN : UI_MUTED);
         value_label(gas ? target.gas_threshold : target.temperature_threshold,
                     gas || target.temperature_threshold_configured,
@@ -412,17 +411,17 @@ static void tile_row(uint8_t row, uint16_t *pixels) {
 }
 
 static uint32_t hash_value(uint32_t hash, uint32_t value) {
-    return (hash ^ value) * 16777619U;
+    return (hash ^ value) * UI_HASH_PRIME;
 }
 
 static void stream_scene(void) {
-    uint32_t hash = 2166136261U;
+    uint32_t hash = UI_HASH_OFFSET;
     for (uint16_t i = 0U; i < UI_TILE_COUNT; i++) {
-        next_tile_hash[i] = 2166136261U;
+        next_tile_hash[i] = UI_HASH_OFFSET;
     }
     for (uint8_t i = 0U; i < op_count; i++) {
         const UiOp_t *op = &ops[i];
-        uint32_t signature = hash_value(2166136261U, (uint32_t)(uintptr_t)op->mask);
+        uint32_t signature = hash_value(UI_HASH_OFFSET, (uint32_t)(uintptr_t)op->mask);
         signature = hash_value(signature, op->color);
         signature = hash_value(signature, op->x | ((uint32_t)op->y << 8) |
                                ((uint32_t)op->width << 16) | ((uint32_t)op->height << 24));
@@ -524,15 +523,17 @@ void app_ui_tick(uint32_t now_ms) {
         clock_started = true;
     }
     uint32_t uptime = now_ms - start_ms;
-    lamp_check = state(&target) != UI_BUS_ERROR && state(&target) != UI_WARNING &&
-                 state(&target) != UI_DANGER && uptime < UI_SWEEP_MS + UI_LAYOUT_MS;
+    lamp_check = state(&target) != UI_BUS_ERROR &&
+                 state(&target) != UI_WARNING && state(&target) != UI_DANGER &&
+                 uptime < UI_SWEEP_MS + UI_LAYOUT_MS;
     if (lamp_check) {
         uint32_t sweep = uptime > UI_LAYOUT_MS ? uptime - UI_LAYOUT_MS : 0U;
         uint32_t phase = sweep < UI_SWEEP_MS / 2U ? sweep : UI_SWEEP_MS - sweep;
         shown_gas = (uint16_t)(phase * UI_GAS_GAUGE_FULL_SCALE_PERCENT /
                                (UI_SWEEP_MS / 2U));
     } else {
-        shown_gas = available(&target) ? display_gas : 0U;
+        shown_gas = available(&target) ?
+                    display_gas : 0U;
     }
     blink_on = (now_ms / UI_BLINK_PERIOD_MS) % 2U == 0U;
     fan_frame = target.has_data && target.fan_on ?
@@ -577,22 +578,36 @@ void app_ui_button(UiView_t *view, UiButton_t button) {
             view->selected_threshold = view->selected_threshold == UI_THRESHOLD_GAS ?
                                        UI_THRESHOLD_TEMPERATURE : UI_THRESHOLD_GAS;
         }
-    } else if (view->edit_mode) {
+    } else if (view->edit_mode &&
+               ((button == UI_BUTTON_PLUS) || (button == UI_BUTTON_MINUS))) {
         bool increase = button == UI_BUTTON_PLUS;
         if (view->selected_threshold == UI_THRESHOLD_GAS) {
-            uint16_t gas = view->gas_threshold > UI_GAS_MAX ? UI_GAS_MAX : view->gas_threshold;
+            uint16_t gas = view->gas_threshold;
+            if (gas < APP_GAS_LIMIT_MIN_RAW) {
+                gas = APP_GAS_LIMIT_MIN_RAW;
+            } else if (gas > APP_GAS_LIMIT_MAX_RAW) {
+                gas = APP_GAS_LIMIT_MAX_RAW;
+            }
             view->gas_threshold = increase ?
-                (gas < UI_GAS_MAX - UI_GAS_STEP_RAW ? gas + UI_GAS_STEP_RAW : UI_GAS_MAX) :
-                (gas > UI_GAS_STEP_RAW ? gas - UI_GAS_STEP_RAW : 0U);
+                (gas < APP_GAS_LIMIT_MAX_RAW - APP_GAS_LIMIT_STEP_RAW ?
+                 gas + APP_GAS_LIMIT_STEP_RAW : APP_GAS_LIMIT_MAX_RAW) :
+                (gas > APP_GAS_LIMIT_MIN_RAW + APP_GAS_LIMIT_STEP_RAW ?
+                 gas - APP_GAS_LIMIT_STEP_RAW : APP_GAS_LIMIT_MIN_RAW);
         } else if (!view->temperature_threshold_configured) {
-            view->temperature_threshold = UI_TEMPERATURE_INITIAL_C;
+            view->temperature_threshold = APP_TEMPERATURE_LIMIT_DEFAULT_C;
             view->temperature_threshold_configured = true;
-        } else if (increase && view->temperature_threshold < UI_TEMPERATURE_MAX_C) {
-            view->temperature_threshold++;
-        } else if (!increase && view->temperature_threshold != 0U) {
-            view->temperature_threshold--;
-        } else if (!increase) {
-            view->temperature_threshold_configured = false;
+        } else {
+            uint8_t temperature = view->temperature_threshold;
+            if (temperature < APP_TEMPERATURE_LIMIT_MIN_C) {
+                temperature = APP_TEMPERATURE_LIMIT_MIN_C;
+            } else if (temperature > APP_TEMPERATURE_LIMIT_MAX_C) {
+                temperature = APP_TEMPERATURE_LIMIT_MAX_C;
+            }
+            view->temperature_threshold = increase ?
+                (temperature < APP_TEMPERATURE_LIMIT_MAX_C ?
+                 temperature + APP_TEMPERATURE_LIMIT_STEP_C : APP_TEMPERATURE_LIMIT_MAX_C) :
+                (temperature > APP_TEMPERATURE_LIMIT_MIN_C ?
+                 temperature - APP_TEMPERATURE_LIMIT_STEP_C : APP_TEMPERATURE_LIMIT_MIN_C);
         }
     }
     app_ui_render(view);

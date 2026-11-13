@@ -68,7 +68,7 @@ Wire the CAN bus as a line Node 1 – Node 2 – Node 3, with 120 Ω only at Nod
 ## Limitations
 
 - If CAN data stops, the fan keeps its last state.
-- Thresholds are fixed at build time. The settings screen is not reachable yet because the four buttons are not implemented; temperature-based fan control, threshold sync to Node 3 and stored settings are pending.
+- Node2 buttons edit gas 500–3800 (step 50) and temperature 30–50 °C (step 1) in RAM. PB12 SELECT, PB13 PLUS, PB14 MINUS, PB15 SAVE; connect each button to GND with internal pull-ups. SAVE exits SETTINGS; flash persistence and applying edited limits to relay/Node3 are pending.
 - Node 3 calls one number and does not retry or fall back to SMS when a call fails.
 
 ## Branches

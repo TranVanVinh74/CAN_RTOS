@@ -5,7 +5,10 @@
 
 #define TASK_ACTUATOR_PRIO (tskIDLE_PRIORITY + 2)
 #define TASK_ACTUATOR_STACK_WORDS 512U
+#include "app_limits.h"
+
 #define UI_FRAME_MS 40U
+#define BUTTON_SCAN_MS 20U
 #define UI_BOOT_LAYOUT_FRAMES 5U
 
 #define SCREEN_STALE_TIMEOUT_MS 3000U

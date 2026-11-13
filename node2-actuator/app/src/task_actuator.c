@@ -9,6 +9,7 @@
 #include "app_ui.h"
 #include "bsp_board.h"
 #include "can_protocol.h"
+#include "hal_buttons.h"
 #include "hal_can.h"
 #include "hal_relay.h"
 #include "hal_tft_graphics.h"
@@ -29,8 +30,26 @@ volatile uint32_t g_canRxCount = 0;
 volatile uint32_t g_canProcessedCount = 0;
 volatile uint32_t g_canQueueFullCount = 0;
 volatile uint32_t g_canInvalidCount = 0;
+volatile uint32_t g_buttonPressCount[BUTTON_COUNT] = {0};
+volatile UiView_t g_uiDebug = {0};
 
 static TaskHandle_t xActuatorTaskHandle = NULL;
+
+static void process_buttons(UiView_t *view, uint32_t now_ms) {
+    static const UiButton_t ui_buttons[BUTTON_COUNT] = {
+        [BUTTON_SELECT] = UI_BUTTON_SELECT,
+        [BUTTON_PLUS] = UI_BUTTON_PLUS,
+        [BUTTON_MINUS] = UI_BUTTON_MINUS,
+        [BUTTON_SAVE] = UI_BUTTON_SAVE,
+    };
+    uint8_t events = hal_buttons_poll(now_ms);
+    for (uint8_t i = 0U; i < BUTTON_COUNT; i++) {
+        if ((events & (1U << i)) != 0U) {
+            g_buttonPressCount[i]++;
+            app_ui_button(view, ui_buttons[i]);
+        }
+    }
+}
 
 static bool is_sensor_frame(const CanRxFrame_t *frame) {
     return !frame->is_extended && !frame->is_remote && (frame->std_id == CAN_ID_SENSOR) &&
@@ -85,8 +104,9 @@ static void prvActuatorTask(void *pvParameters) {
     (void)pvParameters;
 
     UiView_t view = {
-        .gas_threshold = FAN_GAS_ON_THRESHOLD,
-        .temperature_threshold_configured = false,
+        .gas_threshold = APP_GAS_LIMIT_DEFAULT_RAW,
+        .temperature_threshold = APP_TEMPERATURE_LIMIT_DEFAULT_C,
+        .temperature_threshold_configured = true,
         .edit_mode = false,
     };
     TickType_t last_sensor_tick = 0;
@@ -98,12 +118,16 @@ static void prvActuatorTask(void *pvParameters) {
         vTaskDelay(pdMS_TO_TICKS(UI_FRAME_MS));
     }
     bool can_started = start_can();
+    TickType_t last_button_tick = xTaskGetTickCount();
+    TickType_t last_ui_tick = last_button_tick;
 
     for (;;) {
         ActuatorCommand_t cmd;
+        TickType_t elapsed = xTaskGetTickCount() - last_button_tick;
+        TickType_t wait_ticks = elapsed < pdMS_TO_TICKS(BUTTON_SCAN_MS) ?
+                                pdMS_TO_TICKS(BUTTON_SCAN_MS) - elapsed : 0U;
 
-        if (xQueueReceive(xActuatorQueue, &cmd, pdMS_TO_TICKS(UI_FRAME_MS)) ==
-            pdPASS) {
+        if (xQueueReceive(xActuatorQueue, &cmd, wait_ticks) == pdPASS) {
             hal_relay_set(app_fan_should_run(hal_relay_is_on(), cmd.gas_raw));
             cmd.fan_state = hal_relay_is_on() ? 1U : 0U;
 
@@ -119,14 +143,24 @@ static void prvActuatorTask(void *pvParameters) {
             view.fan_on = cmd.fan_state != 0U;
         }
 
+        TickType_t now = xTaskGetTickCount();
+        if ((TickType_t)(now - last_button_tick) >= pdMS_TO_TICKS(BUTTON_SCAN_MS)) {
+            last_button_tick = now;
+            process_buttons(&view, now * portTICK_PERIOD_MS);
+        }
+
         view.stale = view.has_data &&
-                     ((TickType_t)(xTaskGetTickCount() - last_sensor_tick) >=
+                     ((TickType_t)(now - last_sensor_tick) >=
                       pdMS_TO_TICKS(SCREEN_STALE_TIMEOUT_MS));
         g_canError = hal_can_get_error();
         view.bus_error = !can_started || hal_can_bus_fault();
-        draw_view(&view);
-        app_ui_tick(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        g_tftStage = hal_tft_ok() ? g_tftStage : TFT_STAGE_ERROR;
+        if ((TickType_t)(now - last_ui_tick) >= pdMS_TO_TICKS(UI_FRAME_MS)) {
+            last_ui_tick = now;
+            draw_view(&view);
+            app_ui_tick(now * portTICK_PERIOD_MS);
+            g_tftStage = hal_tft_ok() ? g_tftStage : TFT_STAGE_ERROR;
+        }
+        g_uiDebug = view;
 
         g_taskLoops++;
     }
