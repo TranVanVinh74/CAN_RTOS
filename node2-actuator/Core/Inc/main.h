@@ -65,6 +65,14 @@ void Error_Handler(void);
 #define TFT_DC_GPIO_Port GPIOB
 #define TFT_RST_Pin GPIO_PIN_11
 #define TFT_RST_GPIO_Port GPIOB
+#define BUTTON_SELECT_Pin GPIO_PIN_12
+#define BUTTON_SELECT_GPIO_Port GPIOB
+#define BUTTON_PLUS_Pin GPIO_PIN_13
+#define BUTTON_PLUS_GPIO_Port GPIOB
+#define BUTTON_MINUS_Pin GPIO_PIN_14
+#define BUTTON_MINUS_GPIO_Port GPIOB
+#define BUTTON_SAVE_Pin GPIO_PIN_15
+#define BUTTON_SAVE_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

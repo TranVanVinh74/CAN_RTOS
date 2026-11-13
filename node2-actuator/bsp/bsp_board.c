@@ -5,6 +5,7 @@
 
 #include "main.h"
 
+#include "hal_buttons.h"
 #include "hal_can.h"
 #include "hal_relay.h"
 #include "hal_tft.h"
@@ -16,6 +17,13 @@ volatile uint32_t g_errorCode = BOARD_ERR_NONE;
 volatile char g_stackOverflowTask[configMAX_TASK_NAME_LEN];
 
 static BoardError_t init_step = BOARD_ERR_NONE;
+
+static const ButtonPin_t button_pins[BUTTON_COUNT] = {
+    [BUTTON_SELECT] = {BSP_BUTTON_SELECT_PORT, BSP_BUTTON_SELECT_PIN},
+    [BUTTON_PLUS] = {BSP_BUTTON_PLUS_PORT, BSP_BUTTON_PLUS_PIN},
+    [BUTTON_MINUS] = {BSP_BUTTON_MINUS_PORT, BSP_BUTTON_MINUS_PIN},
+    [BUTTON_SAVE] = {BSP_BUTTON_SAVE_PORT, BSP_BUTTON_SAVE_PIN},
+};
 
 static const TftPins_t tft_pins = {
     .cs_port = TFT_CS_GPIO_Port,
@@ -29,6 +37,7 @@ static const TftPins_t tft_pins = {
 void bsp_board_init(void) {
     init_step = BOARD_ERR_NONE;
     hal_relay_init(BSP_RELAY_PORT, BSP_RELAY_PIN, BSP_RELAY_ON_LEVEL);
+    hal_buttons_init(button_pins);
     hal_tft_init(&hspi1, &tft_pins);
     hal_can_init(&hcan);
 }

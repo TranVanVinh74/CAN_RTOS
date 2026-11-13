@@ -40,13 +40,15 @@ static bool send_and_wait(const char *command, const char *expected, uint32_t ti
         uint8_t ch;
 
         while (hal_a7680c_read_byte(&ch)) {
-            if (length < (sizeof(reply) - 1U)) {
-                reply[length++] = (char)ch;
-                reply[length] = '\0';
+            if (length >= (sizeof(reply) - 1U)) {
+                memmove(reply, reply + 1, sizeof(reply) - 2U);
+                length = sizeof(reply) - 2U;
             }
-        }
-        if (strstr(reply, expected) != NULL) {
-            return true;
+            reply[length++] = (char)ch;
+            reply[length] = '\0';
+            if (strstr(reply, expected) != NULL) {
+                return true;
+            }
         }
         vTaskDelay(pdMS_TO_TICKS(MODEM_AT_POLL_MS));
     }

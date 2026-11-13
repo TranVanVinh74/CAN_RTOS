@@ -69,7 +69,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-  bsp_board_set_init_step(BOARD_ERR_OSCILLATOR);
+    bsp_board_set_init_step(BOARD_ERR_OSCILLATOR);
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -89,22 +89,18 @@ int main(void)
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
-  /* add mutexes, ... */
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
-  /* add semaphores, ... */
   /* USER CODE END RTOS_SEMAPHORES */
 
   /* USER CODE BEGIN RTOS_TIMERS */
-  /* start timers, add new ones, ... */
   /* USER CODE END RTOS_TIMERS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
     bsp_board_init();
 
-    if (!app_ipc_init())
-    {
+    if (!app_ipc_init()) {
         bsp_board_fail(BOARD_ERR_QUEUE);
     }
   /* USER CODE END RTOS_QUEUES */
@@ -115,8 +111,7 @@ int main(void)
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
-    if (task_comm_create() != pdPASS)
-    {
+    if (task_comm_create() != pdPASS) {
         bsp_board_fail(BOARD_ERR_TASK);
     }
   /* USER CODE END RTOS_THREADS */
@@ -128,14 +123,13 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  bsp_board_fail(BOARD_ERR_SCHEDULER);
+    bsp_board_fail(BOARD_ERR_SCHEDULER);
 
-  while (1)
-  {
+    while (1) {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-  }
+    }
   /* USER CODE END 3 */
 }
 
@@ -187,7 +181,7 @@ static void MX_CAN_Init(void)
 {
 
   /* USER CODE BEGIN CAN_Init 0 */
-  bsp_board_set_init_step(BOARD_ERR_CAN_INIT);
+    bsp_board_set_init_step(BOARD_ERR_CAN_INIT);
   /* USER CODE END CAN_Init 0 */
 
   /* USER CODE BEGIN CAN_Init 1 */
@@ -224,7 +218,7 @@ static void MX_USART1_UART_Init(void)
 {
 
   /* USER CODE BEGIN USART1_Init 0 */
-  bsp_board_set_init_step(BOARD_ERR_UART1_INIT);
+    bsp_board_set_init_step(BOARD_ERR_UART1_INIT);
   /* USER CODE END USART1_Init 0 */
 
   /* USER CODE BEGIN USART1_Init 1 */
@@ -257,7 +251,7 @@ static void MX_USART2_UART_Init(void)
 {
 
   /* USER CODE BEGIN USART2_Init 0 */
-  bsp_board_set_init_step(BOARD_ERR_UART2_INIT);
+    bsp_board_set_init_step(BOARD_ERR_UART2_INIT);
   /* USER CODE END USART2_Init 0 */
 
   /* USER CODE BEGIN USART2_Init 1 */
@@ -314,17 +308,12 @@ static void MX_GPIO_Init(void)
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
-/**
-  * @brief  Function implementing the defaultTask thread.
-  * @param  argument: Not used
-  * @retval None
-  */
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void const * argument)
 {
   /* USER CODE BEGIN 5 */
-  (void)argument;
-  vTaskDelete(NULL);
+    (void)argument;
+    vTaskDelete(NULL);
   /* USER CODE END 5 */
 }
 
@@ -357,13 +346,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  g_canError = HAL_CAN_GetError(&hcan);
-  bsp_board_record_error();
+    g_canError = HAL_CAN_GetError(&hcan);
+    bsp_board_record_error();
 
-  __disable_irq();
-  while (1)
-  {
-  }
+    __disable_irq();
+    while (1) {
+    }
   /* USER CODE END Error_Handler_Debug */
 }
 
@@ -378,8 +366,6 @@ void Error_Handler(void)
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */

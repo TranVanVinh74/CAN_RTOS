@@ -7,7 +7,8 @@
 #define DHT11_RESPONSE_TIMEOUT_US 150U
 #define DHT11_BIT_TIMEOUT_US 120U
 #define DHT11_BIT_ONE_THRESHOLD_US 50U
-#define DHT11_FRAME_BITS 40U
+#define DHT11_BITS_PER_BYTE 8U
+#define DHT11_FRAME_BITS (DHT11_FRAME_BYTES * DHT11_BITS_PER_BYTE)
 #define DHT11_BYTE_HUMIDITY 0U
 #define DHT11_BYTE_TEMPERATURE 2U
 #define DHT11_BYTE_CHECKSUM 4U
@@ -90,9 +91,9 @@ static Dht11Error_t read_bits(uint8_t frame[DHT11_FRAME_BYTES]) {
 
         uint16_t high_width_us = (uint16_t)(now_us() - high_start);
 
-        frame[bit / 8U] <<= 1;
+        frame[bit / DHT11_BITS_PER_BYTE] <<= 1;
         if (high_width_us > DHT11_BIT_ONE_THRESHOLD_US) {
-            frame[bit / 8U] |= 1U;
+            frame[bit / DHT11_BITS_PER_BYTE] |= 1U;
         }
     }
     return DHT11_ERR_NONE;
@@ -150,9 +151,9 @@ bool hal_dht11_read(Dht11Reading_t *reading) {
     set_output_low();
     vTaskDelay(pdMS_TO_TICKS(DHT11_START_LOW_MS) + 1U);
 
-    taskENTER_CRITICAL();
+    vTaskSuspendAll();
     Dht11Error_t error = read_frame(frame);
-    taskEXIT_CRITICAL();
+    (void)xTaskResumeAll();
 
     for (uint8_t i = 0; i < DHT11_FRAME_BYTES; i++) {
         g_dhtBytes[i] = frame[i];

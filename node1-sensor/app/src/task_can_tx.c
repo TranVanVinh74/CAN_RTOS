@@ -25,7 +25,7 @@ static void prvCanTxTask(void *pvParameters) {
             continue;
         }
 
-        can_pack_sensor(data.temperature, data.humidity, data.gas_raw, payload);
+        can_pack_sensor(data.temperature, data.humidity, data.gas_raw, data.sensor_faults, payload);
         hal_can_send(CAN_ID_SENSOR, payload, CAN_DLC_SENSOR);
     }
 }

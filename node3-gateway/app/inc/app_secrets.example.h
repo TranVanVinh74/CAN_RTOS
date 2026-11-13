@@ -1,5 +1,5 @@
-#ifndef _EXAMPLE_H
-#define _EXAMPLE_H
+#ifndef APP_SECRETS_EXAMPLE_H
+#define APP_SECRETS_EXAMPLE_H
 
 #define APP_ALERT_PHONE "0000000000"
 

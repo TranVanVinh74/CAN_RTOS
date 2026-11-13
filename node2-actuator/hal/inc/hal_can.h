@@ -34,5 +34,7 @@ void hal_can_init(CAN_HandleTypeDef *hcan);
 void hal_can_set_rx_handler(CanRxHandler_t rx_handler);
 CanError_t hal_can_start(void);
 uint32_t hal_can_get_error(void);
+bool hal_can_bus_fault(void);
+bool hal_can_send(uint32_t std_id, const uint8_t *data, uint8_t len);
 
 #endif
