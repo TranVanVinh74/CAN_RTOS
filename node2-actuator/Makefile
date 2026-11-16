@@ -65,7 +65,7 @@ LD_FILE := $(NODE)/STM32F103C8TX_SETTINGS.ld
 
 APP_SRC := $(wildcard $(NODE)/app/src/*.c) \
            $(wildcard $(NODE)/hal/src/*.c) \
-           $(wildcard $(NODE)/bsp/*.c)
+           $(wildcard $(NODE)/bsp/src/*.c)
 SRC := $(CORE_SRC) $(FREERTOS_SRC) $(HAL_SRC) $(patsubst $(NODE)/%,%,$(APP_SRC))
 OBJ := $(addprefix $(BUILD)/, $(patsubst %.c,%.o,$(SRC)) $(patsubst %.s,%.o,$(STARTUP_SRC)))
 
@@ -81,7 +81,7 @@ INC := -I$(NODE)/Core/Inc \
   -I$(NODE)/Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM3 \
   -I$(NODE)/Drivers/CMSIS/Device/ST/STM32F1xx/Include \
   -I$(NODE)/Drivers/CMSIS/Include \
-  -I$(NODE)/bsp \
+  -I$(NODE)/bsp/inc \
   -I$(NODE)/hal/inc \
   -I$(NODE)/app/inc \
   -I$(COMMON)
