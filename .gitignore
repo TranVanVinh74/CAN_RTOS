@@ -1,10 +1,7 @@
 # Firmware images and object files
 *.o
-*.obj
 *.a
-*.lib
 *.elf
-*.axf
 *.hex
 *.bin
 *.srec
@@ -30,11 +27,6 @@ Release/
 *.bak
 *.tmp
 
-# Python tools
-__pycache__/
-*.pyc
-.venv/
-
 # Personal editor settings
 .vscode/
 .idea/
@@ -49,12 +41,3 @@ desktop.ini
 # Local secrets
 app_secrets.h
 board_uid.mk
-
-# Local project notes and logs
-/__log/
-/logs/
-/docs/
-/rules/
-
-# Local UI development tools and generated previews
-/tools/
