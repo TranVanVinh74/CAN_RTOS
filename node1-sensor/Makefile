@@ -1,6 +1,3 @@
-# Standalone Makefile for node1-sensor (STM32F103C8T6) - arm-none-eabi-gcc, no CubeIDE.
-# Usage: cd node1-sensor && make   (or: make -C node1-sensor)
-
 NODE    := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 COMMON  := $(abspath $(NODE)/../common)
 BUILD   := $(NODE)/build
