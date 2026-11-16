@@ -27,12 +27,8 @@ typedef struct {
 
 typedef void (*CanRxHandler_t)(const CanRxFrame_t *frame, BaseType_t *task_woken);
 
-extern volatile uint32_t g_canError;
-extern volatile uint32_t g_canReadErrorCount;
-
 void hal_can_init(CAN_HandleTypeDef *hcan);
 void hal_can_set_rx_handler(CanRxHandler_t rx_handler);
 CanError_t hal_can_start(void);
-uint32_t hal_can_get_error(void);
 
 #endif

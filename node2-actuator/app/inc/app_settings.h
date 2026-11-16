@@ -15,11 +15,6 @@ typedef enum {
     SETTINGS_INVALID
 } SettingsSaveResult_t;
 
-extern volatile uint32_t g_settingsLoadValid;
-extern volatile uint32_t g_settingsWriteCount;
-extern volatile uint32_t g_settingsSaveErrors;
-extern volatile SettingsSaveResult_t g_settingsLastSave;
-
 bool app_settings_load(AppSettings_t *settings);
 SettingsSaveResult_t app_settings_save(const AppSettings_t *settings);
 

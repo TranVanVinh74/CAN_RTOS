@@ -1,8 +1,5 @@
 #include "app_ui.h"
 
-#ifdef UI_PREVIEW
-#include <assert.h>
-#endif
 #include <stddef.h>
 
 #include "app_limits.h"
@@ -155,10 +152,6 @@ static void begin(void) {
 
 static void add(uint8_t x, uint8_t y, uint8_t width, uint8_t height,
                 const uint8_t *mask, uint16_t color) {
-#ifdef UI_PREVIEW
-    assert(op_count < UI_OP_CAPACITY);
-    assert((uint16_t)x + width <= TFT_WIDTH);
-#endif
     if (op_count < UI_OP_CAPACITY) {
         ops[op_count++] = (UiOp_t){mask, color, x, y, width, height};
     }
@@ -628,32 +621,3 @@ void app_ui_button(UiView_t *view, UiButton_t button) {
     app_ui_render(view);
 }
 
-#ifdef UI_PREVIEW
-uint16_t app_ui_preview_gas(void) {
-    return display_gas;
-}
-
-uint16_t app_ui_preview_gauge(void) {
-    return gauge_percent();
-}
-
-uint8_t app_ui_preview_arc_percent(uint8_t segment) {
-    return arc_percent(segment);
-}
-
-uint16_t app_ui_preview_arc_color(uint8_t segment) {
-    assert(segment < UI_ARC_COUNT);
-    return ops[4U + segment].color;
-}
-
-uint8_t app_ui_preview_state(void) {
-    return (uint8_t)state(&target);
-}
-
-void app_ui_preview_redraw(void) {
-    for (uint8_t i = 0U; i < sizeof(tile_valid); i++) {
-        tile_valid[i] = 0U;
-    }
-    scene_hash = 0U;
-}
-#endif

@@ -8,7 +8,6 @@
 #include "queue.h"
 
 typedef struct {
-    uint8_t fan_state;
     uint8_t temperature;
     uint8_t humidity;
     uint16_t gas_raw;

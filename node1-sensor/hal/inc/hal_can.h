@@ -12,10 +12,6 @@ typedef enum {
     CAN_ERR_START = 2
 } CanError_t;
 
-extern volatile uint8_t g_canError;
-extern volatile uint32_t g_canTxCount;
-extern volatile uint32_t g_canTxFailCount;
-
 bool hal_can_init(CAN_HandleTypeDef *hcan);
 bool hal_can_send(uint32_t std_id, const uint8_t *data, uint8_t len);
 

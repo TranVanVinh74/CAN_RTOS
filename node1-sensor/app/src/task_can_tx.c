@@ -8,8 +8,6 @@
 #include "can_protocol.h"
 #include "hal_can.h"
 
-volatile uint32_t g_canTxQueueTimeoutCount = 0;
-
 static TaskHandle_t xCanTxTaskHandle = NULL;
 
 static void prvCanTxTask(void *pvParameters) {
@@ -21,7 +19,6 @@ static void prvCanTxTask(void *pvParameters) {
 
         if (xQueueReceive(xSensorQueue, &data, pdMS_TO_TICKS(TASK_CAN_TX_QUEUE_WAIT_MS)) !=
             pdPASS) {
-            g_canTxQueueTimeoutCount++;
             continue;
         }
 

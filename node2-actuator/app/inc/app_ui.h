@@ -39,13 +39,4 @@ void app_ui_tick(uint32_t now_ms);
 void app_ui_reset(void);
 void app_ui_render(const UiView_t *view);
 
-#ifdef UI_PREVIEW
-uint16_t app_ui_preview_gas(void);
-uint8_t app_ui_preview_state(void);
-uint16_t app_ui_preview_gauge(void);
-uint8_t app_ui_preview_arc_percent(uint8_t segment);
-uint16_t app_ui_preview_arc_color(uint8_t segment);
-void app_ui_preview_redraw(void);
-#endif
-
 #endif

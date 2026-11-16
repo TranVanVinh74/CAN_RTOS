@@ -17,26 +17,6 @@
 #include "hal_relay.h"
 #include "hal_tft_graphics.h"
 
-#define TFT_STAGE_WAITING 2U
-#define TFT_STAGE_DATA 3U
-#define TFT_STAGE_ERROR 99U
-
-#define CAN_STAGE_STARTING 1U
-#define CAN_STAGE_RUNNING 2U
-#define CAN_STAGE_ERROR 99U
-
-volatile ActuatorCommand_t g_node2Debug = {0};
-volatile uint32_t g_tftStage = 0;
-volatile uint32_t g_canStage = 0;
-volatile uint32_t g_taskLoops = 0;
-volatile uint32_t g_canRxCount = 0;
-volatile uint32_t g_canProcessedCount = 0;
-volatile uint32_t g_canQueueFullCount = 0;
-volatile uint32_t g_canInvalidCount = 0;
-volatile uint32_t g_buttonPressCount[BUTTON_COUNT] = {0};
-volatile UiView_t g_uiDebug = {0};
-volatile AlertThresholds_t g_activeThresholds = {0};
-
 static TaskHandle_t xActuatorTaskHandle = NULL;
 
 static bool process_buttons(UiView_t *view, AppSettings_t *active, uint32_t now_ms) {
@@ -51,7 +31,6 @@ static bool process_buttons(UiView_t *view, AppSettings_t *active, uint32_t now_
 
     for (uint8_t i = 0U; i < BUTTON_COUNT; i++) {
         if ((events & (1U << i)) != 0U) {
-            g_buttonPressCount[i]++;
             if ((i == BUTTON_SAVE) && view->edit_mode) {
                 AppSettings_t settings = {
                     .gas_limit_raw = view->gas_threshold,
@@ -82,27 +61,16 @@ static void on_can_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
     ActuatorCommand_t cmd = {0};
 
     if (!is_sensor_frame(frame)) {
-        g_canInvalidCount++;
         return;
     }
 
     can_unpack_sensor(frame->data, &cmd.temperature, &cmd.humidity, &cmd.gas_raw,
                       &cmd.sensor_faults);
     if (!sensor_faults_valid(cmd.sensor_faults)) {
-        g_canInvalidCount++;
         return;
     }
-    g_canRxCount++;
 
-    if (xQueueSendFromISR(xActuatorQueue, &cmd, task_woken) != pdPASS) {
-        g_canQueueFullCount++;
-    }
-}
-
-static void draw_view(const UiView_t *view) {
-    app_ui_render(view);
-    g_tftStage = hal_tft_ok() ?
-                 (view->has_data ? TFT_STAGE_DATA : TFT_STAGE_WAITING) : TFT_STAGE_ERROR;
+    (void)xQueueSendFromISR(xActuatorQueue, &cmd, task_woken);
 }
 
 static bool start_can(void) {
@@ -114,16 +82,11 @@ static bool start_can(void) {
         [CAN_ERR_NOTIFICATION] = BOARD_ERR_CAN_NOTIFICATION,
     };
 
-    g_canStage = CAN_STAGE_STARTING;
-
     CanError_t error = hal_can_start();
     if (error != CAN_ERR_NONE) {
         g_errorCode = board_error[error];
-        g_canStage = CAN_STAGE_ERROR;
         return false;
     }
-
-    g_canStage = CAN_STAGE_RUNNING;
     return true;
 }
 
@@ -140,12 +103,11 @@ static void prvActuatorTask(void *pvParameters) {
     (void)app_settings_load(&settings);
     view.gas_threshold = settings.gas_limit_raw;
     view.temperature_threshold = settings.temperature_limit_c;
-    g_activeThresholds = settings;
     app_threshold_sync_init();
     TickType_t last_sensor_tick = 0;
 
     app_ui_reset();
-    draw_view(&view);
+    app_ui_render(&view);
     for (uint8_t frame = 0U; frame < UI_BOOT_LAYOUT_FRAMES; frame++) {
         app_ui_tick(xTaskGetTickCount() * portTICK_PERIOD_MS);
         vTaskDelay(pdMS_TO_TICKS(UI_FRAME_MS));
@@ -163,10 +125,6 @@ static void prvActuatorTask(void *pvParameters) {
         if (xQueueReceive(xActuatorQueue, &cmd, wait_ticks) == pdPASS) {
             hal_relay_set(app_fan_should_run(hal_relay_is_on(), cmd.gas_raw,
                                              cmd.temperature, cmd.sensor_faults, &settings));
-            cmd.fan_state = hal_relay_is_on() ? 1U : 0U;
-
-            g_node2Debug = cmd;
-            g_canProcessedCount++;
 
             last_sensor_tick = xTaskGetTickCount();
             view.sample_id++;
@@ -175,7 +133,7 @@ static void prvActuatorTask(void *pvParameters) {
             view.humidity = cmd.humidity;
             view.gas_raw = cmd.gas_raw;
             view.sensor_faults = cmd.sensor_faults;
-            view.fan_on = cmd.fan_state != 0U;
+            view.fan_on = hal_relay_is_on();
         }
 
         TickType_t now = xTaskGetTickCount();
@@ -188,9 +146,7 @@ static void prvActuatorTask(void *pvParameters) {
                 hal_relay_set(app_fan_should_run(hal_relay_is_on(), view.gas_raw,
                                                  view.temperature, view.sensor_faults, &settings));
                 view.fan_on = hal_relay_is_on();
-                g_node2Debug.fan_state = view.fan_on ? 1U : 0U;
             }
-            g_activeThresholds = settings;
         }
 
         if (can_started) {
@@ -200,17 +156,12 @@ static void prvActuatorTask(void *pvParameters) {
         view.stale = view.has_data &&
                      ((TickType_t)(now - last_sensor_tick) >=
                       pdMS_TO_TICKS(SCREEN_STALE_TIMEOUT_MS));
-        g_canError = hal_can_get_error();
         view.bus_error = !can_started || hal_can_bus_fault();
         if ((TickType_t)(now - last_ui_tick) >= pdMS_TO_TICKS(UI_FRAME_MS)) {
             last_ui_tick = now;
-            draw_view(&view);
+            app_ui_render(&view);
             app_ui_tick(now * portTICK_PERIOD_MS);
-            g_tftStage = hal_tft_ok() ? g_tftStage : TFT_STAGE_ERROR;
         }
-        g_uiDebug = view;
-
-        g_taskLoops++;
     }
 }
 

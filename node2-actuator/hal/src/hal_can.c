@@ -11,9 +11,6 @@
 #define CAN_SLAVE_START_FILTER_BANK 14U
 #define CAN_STANDARD_ID_MAX 0x7FFU
 
-volatile uint32_t g_canError = 0;
-volatile uint32_t g_canReadErrorCount = 0;
-
 static CAN_HandleTypeDef *can_handle = NULL;
 static CanRxHandler_t can_rx_handler = NULL;
 
@@ -47,25 +44,18 @@ CanError_t hal_can_start(void) {
     }
 
     if (config_accept_all_filter() != HAL_OK) {
-        g_canError = HAL_CAN_GetError(can_handle);
         return CAN_ERR_FILTER;
     }
 
     if (HAL_CAN_Start(can_handle) != HAL_OK) {
-        g_canError = HAL_CAN_GetError(can_handle);
         return CAN_ERR_START;
     }
 
     if (HAL_CAN_ActivateNotification(can_handle, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK) {
-        g_canError = HAL_CAN_GetError(can_handle);
         return CAN_ERR_NOTIFICATION;
     }
 
     return CAN_ERR_NONE;
-}
-
-uint32_t hal_can_get_error(void) {
-    return (can_handle != NULL) ? HAL_CAN_GetError(can_handle) : 0U;
 }
 
 bool hal_can_bus_fault(void) {
@@ -106,7 +96,6 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
         CanRxFrame_t frame;
 
         if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &header, frame.data) != HAL_OK) {
-            g_canReadErrorCount++;
             break;
         }
 

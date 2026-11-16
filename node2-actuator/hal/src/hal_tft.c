@@ -26,13 +26,10 @@
 #define TFT_SLPOUT_WAIT_MS 255U
 #define TFT_DISPON_WAIT_MS 100U
 
-volatile uint32_t g_tftSPIErrors = 0;
-volatile uint32_t g_tftSPIStatus = HAL_OK;
-volatile uint32_t g_tftSPIHalError = 0;
-
 static SPI_HandleTypeDef *tft_spi = NULL;
 static TftPins_t tft_pins;
 static uint8_t pixel_line[TFT_WIDTH * 2U];
+static bool spi_failed = false;
 
 static const uint8_t st7735_init_cmds[] = {
     0xB1, 3, 0x01, 0x2C, 0x2D,
@@ -68,24 +65,18 @@ static void rst_set(bool high) {
     pin_write(tft_pins.rst_port, tft_pins.rst_pin, high);
 }
 
+static void spi_transmit(uint8_t *data, uint16_t size) {
+    if (spi_failed) {
+        return;
+    }
+    if ((tft_spi == NULL) ||
+        (HAL_SPI_Transmit(tft_spi, data, size, TFT_SPI_TIMEOUT_MS) != HAL_OK)) {
+        spi_failed = true;
+    }
+}
+
 static void spi_send(uint8_t byte) {
-    if (g_tftSPIErrors != 0U) {
-        return;
-    }
-
-    if (tft_spi == NULL) {
-        g_tftSPIStatus = (uint32_t)HAL_ERROR;
-        g_tftSPIErrors++;
-        return;
-    }
-
-    HAL_StatusTypeDef status = HAL_SPI_Transmit(tft_spi, &byte, 1U, TFT_SPI_TIMEOUT_MS);
-
-    g_tftSPIStatus = (uint32_t)status;
-    g_tftSPIHalError = HAL_SPI_GetError(tft_spi);
-    if (status != HAL_OK) {
-        g_tftSPIErrors++;
-    }
+    spi_transmit(&byte, 1U);
 }
 
 static void write_cmd(uint8_t cmd) {
@@ -103,7 +94,7 @@ static void write_data(uint8_t data) {
 }
 
 static void send_cmd_list(const uint8_t *list) {
-    while (g_tftSPIErrors == 0U) {
+    while (!spi_failed) {
         uint8_t cmd = *list++;
         uint8_t count = *list++;
 
@@ -134,13 +125,10 @@ static void set_window(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2) {
 
 void hal_tft_init(SPI_HandleTypeDef *hspi, const TftPins_t *pins) {
     tft_spi = hspi;
-    g_tftSPIErrors = 0;
-    g_tftSPIStatus = HAL_OK;
-    g_tftSPIHalError = 0;
+    spi_failed = false;
 
     if ((hspi == NULL) || (pins == NULL)) {
-        g_tftSPIStatus = (uint32_t)HAL_ERROR;
-        g_tftSPIErrors++;
+        spi_failed = true;
         return;
     }
 
@@ -179,24 +167,12 @@ void hal_tft_init(SPI_HandleTypeDef *hspi, const TftPins_t *pins) {
 }
 
 bool hal_tft_ok(void) {
-    return (tft_spi != NULL) && (g_tftSPIErrors == 0U);
+    return (tft_spi != NULL) && !spi_failed;
 }
 
 static bool valid_rect(uint8_t x, uint8_t y, uint16_t width, uint16_t height) {
-    return (g_tftSPIErrors == 0U) && (width > 0U) && (height > 0U) &&
+    return !spi_failed && (width > 0U) && (height > 0U) &&
            ((uint16_t)x + width <= TFT_WIDTH) && ((uint16_t)y + height <= TFT_HEIGHT);
-}
-
-static void stream_bytes(uint8_t *data, uint16_t size) {
-    if (g_tftSPIErrors != 0U) {
-        return;
-    }
-    HAL_StatusTypeDef status = HAL_SPI_Transmit(tft_spi, data, size, TFT_SPI_TIMEOUT_MS);
-    g_tftSPIStatus = (uint32_t)status;
-    g_tftSPIHalError = HAL_SPI_GetError(tft_spi);
-    if (status != HAL_OK) {
-        g_tftSPIErrors++;
-    }
 }
 
 void hal_tft_draw_region(uint8_t x, uint8_t y, uint8_t width, uint8_t height,
@@ -210,19 +186,19 @@ void hal_tft_draw_region(uint8_t x, uint8_t y, uint8_t width, uint8_t height,
     dc_set(true);
     cs_set(false);
     uint16_t used = 0U;
-    for (uint8_t row = 0U; row < height && g_tftSPIErrors == 0U; row++) {
+    for (uint8_t row = 0U; row < height && !spi_failed; row++) {
         painter(row, row_pixels);
         for (uint8_t col = 0U; col < width; col++) {
             pixel_line[used++] = (uint8_t)(row_pixels[col] >> 8);
             pixel_line[used++] = (uint8_t)row_pixels[col];
             if (used == sizeof(pixel_line)) {
-                stream_bytes(pixel_line, used);
+                spi_transmit(pixel_line, used);
                 used = 0U;
             }
         }
     }
     if (used != 0U) {
-        stream_bytes(pixel_line, used);
+        spi_transmit(pixel_line, used);
     }
     cs_set(true);
 }

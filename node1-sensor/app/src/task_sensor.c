@@ -9,9 +9,6 @@
 #include "hal_mq5.h"
 #include "sensor_status.h"
 
-volatile SensorData_t g_sensorDebug = {0};
-volatile uint32_t g_sensorQueueDropCount = 0;
-
 static TaskHandle_t xSensorTaskHandle = NULL;
 
 static void prvSensorTask(void *pvParameters) {
@@ -22,9 +19,10 @@ static void prvSensorTask(void *pvParameters) {
     TickType_t last_wake = xTaskGetTickCount();
 
     for (;;) {
-        data.gas_raw = hal_mq5_read_average(TASK_SENSOR_MQ5_SAMPLES);
-
-        data.sensor_faults = g_mq5Error == MQ5_ERR_NONE ? 0U : SENSOR_FAULT_GAS;
+        data.sensor_faults = 0U;
+        if (!hal_mq5_read_average(TASK_SENSOR_MQ5_SAMPLES, &data.gas_raw)) {
+            data.sensor_faults |= SENSOR_FAULT_GAS;
+        }
         if (hal_dht11_read(&dht)) {
             data.temperature = dht.temperature_c;
             data.humidity = dht.humidity_pct;
@@ -32,12 +30,7 @@ static void prvSensorTask(void *pvParameters) {
             data.sensor_faults |= SENSOR_FAULT_DHT;
         }
 
-        g_sensorDebug = data;
-
-        if (xQueueSend(xSensorQueue, &data, pdMS_TO_TICKS(TASK_SENSOR_QUEUE_SEND_TIMEOUT_MS)) !=
-            pdPASS) {
-            g_sensorQueueDropCount++;
-        }
+        (void)xQueueSend(xSensorQueue, &data, pdMS_TO_TICKS(TASK_SENSOR_QUEUE_SEND_TIMEOUT_MS));
 
         vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(TASK_SENSOR_PERIOD_MS));
     }

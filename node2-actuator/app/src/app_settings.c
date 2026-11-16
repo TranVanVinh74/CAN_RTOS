@@ -12,11 +12,6 @@
 #define SETTINGS_CHECKSUM_WORDS 6U
 #define SETTINGS_CRC_POLYNOMIAL 0xEDB88320U
 
-volatile uint32_t g_settingsLoadValid = 0U;
-volatile uint32_t g_settingsWriteCount = 0U;
-volatile uint32_t g_settingsSaveErrors = 0U;
-volatile SettingsSaveResult_t g_settingsLastSave = SETTINGS_UNCHANGED;
-
 static AppSettings_t saved;
 static bool retry_required;
 
@@ -67,19 +62,16 @@ bool app_settings_load(AppSettings_t *settings) {
     *settings = loaded;
     saved = loaded;
     retry_required = false;
-    g_settingsLoadValid = valid ? 1U : 0U;
     return valid;
 }
 
 SettingsSaveResult_t app_settings_save(const AppSettings_t *settings) {
     if (!valid_settings(settings)) {
-        g_settingsLastSave = SETTINGS_INVALID;
-        return g_settingsLastSave;
+        return SETTINGS_INVALID;
     }
     if (!retry_required && (settings->gas_limit_raw == saved.gas_limit_raw) &&
         (settings->temperature_limit_c == saved.temperature_limit_c)) {
-        g_settingsLastSave = SETTINGS_UNCHANGED;
-        return g_settingsLastSave;
+        return SETTINGS_UNCHANGED;
     }
 
     uint16_t words[SETTINGS_RECORD_WORDS] = {
@@ -92,15 +84,9 @@ SettingsSaveResult_t app_settings_save(const AppSettings_t *settings) {
 
     retry_required = true;
     if (!hal_settings_flash_write(words, SETTINGS_RECORD_WORDS)) {
-        g_settingsSaveErrors++;
-        g_settingsLoadValid = 0U;
-        g_settingsLastSave = SETTINGS_SAVE_ERROR;
-        return g_settingsLastSave;
+        return SETTINGS_SAVE_ERROR;
     }
     saved = *settings;
     retry_required = false;
-    g_settingsLoadValid = 1U;
-    g_settingsWriteCount++;
-    g_settingsLastSave = SETTINGS_SAVED;
-    return g_settingsLastSave;
+    return SETTINGS_SAVED;
 }
