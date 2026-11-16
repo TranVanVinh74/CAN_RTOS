@@ -84,7 +84,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-
+    bsp_board_init();
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -97,8 +97,6 @@ int main(void)
   /* USER CODE END RTOS_TIMERS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
-    bsp_board_init();
-
     if (!app_ipc_init()) {
         bsp_board_fail(BOARD_ERR_QUEUE);
     }

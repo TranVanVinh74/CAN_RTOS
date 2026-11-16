@@ -3,11 +3,9 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "FreeRTOS.h"
-#include "task.h"
-
 #include "app_cfg.h"
 #include "app_modem_reply.h"
+#include "app_time.h"
 #include "hal_a7680c.h"
 
 #define CALL_COMMAND_LEN 64U
@@ -22,10 +20,6 @@ static uint32_t call_started_ms = 0;
 static uint32_t last_attempt_ms = 0;
 static char reply[CALL_REPLY_LEN];
 static uint16_t reply_length = 0;
-
-static uint32_t now_ms(void) {
-    return (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-}
 
 static void reset_reply(void) {
     memset(reply, 0, sizeof(reply));
@@ -96,7 +90,7 @@ bool app_call_cooldown_over(uint32_t now_ms) {
 void app_call_start(const char *phone) {
     char command[CALL_COMMAND_LEN];
 
-    last_attempt_ms = now_ms();
+    last_attempt_ms = app_time_ms();
     call_attempted = true;
     hangup_requested = false;
 
@@ -111,7 +105,7 @@ void app_call_start(const char *phone) {
         return;
     }
 
-    call_started_ms = now_ms();
+    call_started_ms = app_time_ms();
     call_active = true;
     call_stage = CALL_STAGE_IN_CALL;
 }
@@ -121,7 +115,7 @@ void app_call_request_hangup(void) {
 }
 
 void app_call_service(void) {
-    switch (app_modem_classify_reply(reply)) {
+    switch (app_modem_reply_classify(reply)) {
     case MODEM_REPLY_MODEM_RESET:
         mark_inactive();
         modem_ready = false;
@@ -140,7 +134,7 @@ void app_call_service(void) {
         break;
     }
 
-    if (hangup_requested || ((now_ms() - call_started_ms) >= CALL_DURATION_MS)) {
+    if (hangup_requested || ((app_time_ms() - call_started_ms) >= CALL_DURATION_MS)) {
         hang_up(CALL_STAGE_HUNG_UP);
     }
 }
@@ -150,7 +144,7 @@ void app_call_poll_modem(void) {
 
     while (hal_a7680c_read_byte(&byte)) {
         append_reply(byte);
-        if (!call_active && (app_modem_classify_reply(reply) == MODEM_REPLY_MODEM_RESET)) {
+        if (!call_active && (app_modem_reply_classify(reply) == MODEM_REPLY_MODEM_RESET)) {
             modem_ready = false;
             call_stage = CALL_STAGE_MODEM_BOOT;
             reset_reply();

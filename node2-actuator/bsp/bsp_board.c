@@ -6,23 +6,24 @@
 #include "main.h"
 
 #include "hal_buttons.h"
-#include "hal_can.h"
 #include "hal_relay.h"
 #include "hal_tft.h"
+
+#define BSP_RELAY_ON_LEVEL GPIO_PIN_SET
 
 extern CAN_HandleTypeDef hcan;
 extern SPI_HandleTypeDef hspi1;
 
-volatile uint32_t g_errorCode = BOARD_ERR_NONE;
+volatile BoardError_t g_errorCode = BOARD_ERR_NONE;
 volatile char g_stackOverflowTask[configMAX_TASK_NAME_LEN];
 
 static BoardError_t init_step = BOARD_ERR_NONE;
 
 static const ButtonPin_t button_pins[BUTTON_COUNT] = {
-    [BUTTON_SELECT] = {BSP_BUTTON_SELECT_PORT, BSP_BUTTON_SELECT_PIN},
-    [BUTTON_PLUS] = {BSP_BUTTON_PLUS_PORT, BSP_BUTTON_PLUS_PIN},
-    [BUTTON_MINUS] = {BSP_BUTTON_MINUS_PORT, BSP_BUTTON_MINUS_PIN},
-    [BUTTON_SAVE] = {BSP_BUTTON_SAVE_PORT, BSP_BUTTON_SAVE_PIN},
+    [BUTTON_SELECT] = {BUTTON_SELECT_GPIO_Port, BUTTON_SELECT_Pin},
+    [BUTTON_PLUS] = {BUTTON_PLUS_GPIO_Port, BUTTON_PLUS_Pin},
+    [BUTTON_MINUS] = {BUTTON_MINUS_GPIO_Port, BUTTON_MINUS_Pin},
+    [BUTTON_SAVE] = {BUTTON_SAVE_GPIO_Port, BUTTON_SAVE_Pin},
 };
 
 static const TftPins_t tft_pins = {
@@ -36,15 +37,10 @@ static const TftPins_t tft_pins = {
 
 void bsp_board_init(void) {
     init_step = BOARD_ERR_NONE;
-    hal_relay_init(BSP_RELAY_PORT, BSP_RELAY_PIN, BSP_RELAY_ON_LEVEL);
+    hal_relay_init(RELAY_FAN_GPIO_Port, RELAY_FAN_Pin, BSP_RELAY_ON_LEVEL);
     hal_buttons_init(button_pins);
     hal_tft_init(&hspi1, &tft_pins);
     hal_can_init(&hcan);
-}
-
-void bsp_board_fail(BoardError_t error) {
-    g_errorCode = error;
-    Error_Handler();
 }
 
 void bsp_board_set_init_step(BoardError_t step) {
@@ -63,9 +59,33 @@ void bsp_board_record_error(void) {
     }
 }
 
+void bsp_board_set_error(BoardError_t error) {
+    g_errorCode = error;
+}
+
+void bsp_board_fail(BoardError_t error) {
+    bsp_board_set_error(error);
+    Error_Handler();
+}
+
+BoardError_t bsp_board_can_error(CanError_t error) {
+    switch (error) {
+    case CAN_ERR_NONE:
+        return BOARD_ERR_NONE;
+    case CAN_ERR_FILTER:
+        return BOARD_ERR_CAN_FILTER;
+    case CAN_ERR_NOTIFICATION:
+        return BOARD_ERR_CAN_NOTIFICATION;
+    case CAN_ERR_NO_HANDLE:
+    case CAN_ERR_START:
+    default:
+        return BOARD_ERR_CAN_START;
+    }
+}
+
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {
     (void)xTask;
-    for (uint32_t i = 0; i < (sizeof(g_stackOverflowTask) - 1U) && (pcTaskName[i] != '\0'); i++) {
+    for (uint32_t i = 0; (i < sizeof(g_stackOverflowTask) - 1U) && (pcTaskName[i] != '\0'); i++) {
         g_stackOverflowTask[i] = pcTaskName[i];
     }
     bsp_board_fail(BOARD_ERR_STACK_OVERFLOW);

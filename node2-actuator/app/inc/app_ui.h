@@ -14,13 +14,13 @@ typedef struct {
     bool bus_error;
     bool has_data;
     bool stale;
-    uint8_t temperature;
-    uint8_t humidity;
+    uint8_t temperature_c;
+    uint8_t humidity_pct;
     uint16_t gas_raw;
     uint8_t sensor_faults;
     bool fan_on;
-    uint16_t gas_threshold;
-    uint8_t temperature_threshold;
+    uint16_t gas_limit_raw;
+    uint8_t temperature_limit_c;
     bool edit_mode;
     bool settings_save_error;
     UiThreshold_t selected_threshold;

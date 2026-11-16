@@ -5,13 +5,23 @@
 
 #include "app_cfg.h"
 #include "app_ipc.h"
+#include "bsp_board.h"
 #include "can_protocol.h"
 #include "hal_can.h"
 
 static TaskHandle_t xCanTxTaskHandle = NULL;
 
+static void start_can(void) {
+    CanError_t error = hal_can_start();
+    if (error != CAN_ERR_NONE) {
+        bsp_board_fail(bsp_board_can_error(error));
+    }
+}
+
 static void prvCanTxTask(void *pvParameters) {
     (void)pvParameters;
+
+    start_can();
 
     for (;;) {
         SensorData_t data;
@@ -22,8 +32,9 @@ static void prvCanTxTask(void *pvParameters) {
             continue;
         }
 
-        can_pack_sensor(data.temperature, data.humidity, data.gas_raw, data.sensor_faults, payload);
-        hal_can_send(CAN_ID_SENSOR, payload, CAN_DLC_SENSOR);
+        can_pack_sensor(data.temperature_c, data.humidity_pct, data.gas_raw, data.sensor_faults,
+                        payload);
+        (void)hal_can_send(CAN_ID_SENSOR, payload, CAN_DLC_SENSOR);
     }
 }
 

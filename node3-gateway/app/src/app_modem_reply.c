@@ -17,7 +17,7 @@ static bool contains_any(const char *reply, const char *const *markers, size_t c
     return false;
 }
 
-ModemReply_t app_modem_classify_reply(const char *reply) {
+ModemReply_t app_modem_reply_classify(const char *reply) {
     if (reply == NULL) {
         return MODEM_REPLY_NONE;
     }

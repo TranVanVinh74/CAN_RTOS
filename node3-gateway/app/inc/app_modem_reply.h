@@ -8,6 +8,6 @@ typedef enum {
     MODEM_REPLY_MODEM_RESET = 3
 } ModemReply_t;
 
-ModemReply_t app_modem_classify_reply(const char *reply);
+ModemReply_t app_modem_reply_classify(const char *reply);
 
 #endif

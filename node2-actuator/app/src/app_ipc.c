@@ -2,9 +2,9 @@
 
 #include "app_cfg.h"
 
-QueueHandle_t xActuatorQueue = NULL;
+QueueHandle_t xSensorQueue = NULL;
 
 bool app_ipc_init(void) {
-    xActuatorQueue = xQueueCreate(ACTUATOR_QUEUE_LENGTH, sizeof(ActuatorCommand_t));
-    return xActuatorQueue != NULL;
+    xSensorQueue = xQueueCreate(SENSOR_QUEUE_LENGTH, sizeof(SensorData_t));
+    return xSensorQueue != NULL;
 }

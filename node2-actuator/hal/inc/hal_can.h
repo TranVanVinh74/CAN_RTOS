@@ -10,11 +10,11 @@
 #define HAL_CAN_MAX_DLC 8U
 
 typedef enum {
-    CAN_ERR_NONE = 0,
-    CAN_ERR_NO_HANDLE = 1,
-    CAN_ERR_FILTER = 2,
-    CAN_ERR_START = 3,
-    CAN_ERR_NOTIFICATION = 4
+    CAN_ERR_NONE,
+    CAN_ERR_NO_HANDLE,
+    CAN_ERR_FILTER,
+    CAN_ERR_START,
+    CAN_ERR_NOTIFICATION
 } CanError_t;
 
 typedef struct {

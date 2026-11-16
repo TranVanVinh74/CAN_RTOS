@@ -6,13 +6,18 @@
 
 #include "stm32f1xx_hal.h"
 
+#define HAL_CAN_MAX_DLC 8U
+
 typedef enum {
-    CAN_ERR_NONE = 0,
-    CAN_ERR_NO_HANDLE = 1,
-    CAN_ERR_START = 2
+    CAN_ERR_NONE,
+    CAN_ERR_NO_HANDLE,
+    CAN_ERR_FILTER,
+    CAN_ERR_START,
+    CAN_ERR_NOTIFICATION
 } CanError_t;
 
-bool hal_can_init(CAN_HandleTypeDef *hcan);
+void hal_can_init(CAN_HandleTypeDef *hcan);
+CanError_t hal_can_start(void);
 bool hal_can_send(uint32_t std_id, const uint8_t *data, uint8_t len);
 
 #endif

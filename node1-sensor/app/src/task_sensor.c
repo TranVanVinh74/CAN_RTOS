@@ -24,13 +24,13 @@ static void prvSensorTask(void *pvParameters) {
             data.sensor_faults |= SENSOR_FAULT_GAS;
         }
         if (hal_dht11_read(&dht)) {
-            data.temperature = dht.temperature_c;
-            data.humidity = dht.humidity_pct;
+            data.temperature_c = dht.temperature_c;
+            data.humidity_pct = dht.humidity_pct;
         } else {
             data.sensor_faults |= SENSOR_FAULT_DHT;
         }
 
-        (void)xQueueSend(xSensorQueue, &data, pdMS_TO_TICKS(TASK_SENSOR_QUEUE_SEND_TIMEOUT_MS));
+        (void)xQueueSend(xSensorQueue, &data, pdMS_TO_TICKS(TASK_SENSOR_SEND_TIMEOUT_MS));
 
         vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(TASK_SENSOR_PERIOD_MS));
     }
