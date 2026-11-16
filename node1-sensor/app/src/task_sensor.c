@@ -30,6 +30,7 @@ static void prvSensorTask(void *pvParameters) {
             data.sensor_faults |= SENSOR_FAULT_DHT;
         }
 
+        /* A full queue drops this sample; the next one follows one period later. */
         (void)xQueueSend(xSensorQueue, &data, pdMS_TO_TICKS(TASK_SENSOR_SEND_TIMEOUT_MS));
 
         vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(TASK_SENSOR_PERIOD_MS));

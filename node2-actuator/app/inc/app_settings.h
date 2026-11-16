@@ -6,8 +6,6 @@
 
 #include "alert_thresholds.h"
 
-typedef AlertThresholds_t AppSettings_t;
-
 typedef enum {
     SETTINGS_UNCHANGED,
     SETTINGS_SAVED,
@@ -15,7 +13,7 @@ typedef enum {
     SETTINGS_INVALID
 } SettingsSaveResult_t;
 
-bool app_settings_load(AppSettings_t *settings);
-SettingsSaveResult_t app_settings_save(const AppSettings_t *settings);
+bool app_settings_load(AlertThresholds_t *settings);
+SettingsSaveResult_t app_settings_save(const AlertThresholds_t *settings);
 
 #endif

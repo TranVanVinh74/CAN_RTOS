@@ -34,6 +34,7 @@ static void prvCanTxTask(void *pvParameters) {
 
         can_pack_sensor(data.temperature_c, data.humidity_pct, data.gas_raw, data.sensor_faults,
                         payload);
+        /* Busy TX mailboxes drop the frame; the next sample replaces it one period later. */
         (void)hal_can_send(CAN_ID_SENSOR, payload, CAN_DLC_SENSOR);
     }
 }
