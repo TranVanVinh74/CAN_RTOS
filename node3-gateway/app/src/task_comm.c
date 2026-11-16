@@ -25,6 +25,10 @@ static AlertThresholds_t active_thresholds = {
     .gas_limit_raw = ALERT_GAS_DEFAULT_RAW,
     .temperature_limit_c = ALERT_TEMPERATURE_DEFAULT_C,
 };
+static uint32_t modem_wait_start_ms = 0;
+static uint32_t last_at_check_ms = 0;
+static uint32_t last_idle_check_ms = 0;
+static bool at_checked = false;
 
 static bool is_data_frame(const CanRxFrame_t *frame, uint32_t std_id, uint8_t dlc) {
     return !frame->is_extended && !frame->is_remote && (frame->std_id == std_id) &&
@@ -50,7 +54,7 @@ static void on_sensor_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
         return;
     }
     /* Stamped on arrival so freshness does not depend on when the task reads the queue. */
-    sample.received_ms = (uint32_t)(xTaskGetTickCountFromISR() * portTICK_PERIOD_MS);
+    sample.received_ms = app_time_ms_from_isr();
     (void)xQueueOverwriteFromISR(xSensorQueue, &sample, task_woken);
 }
 
@@ -102,16 +106,25 @@ static bool alarm_wants_call(void) {
     return sensor_fresh && alarm_active;
 }
 
+static void restart_modem_wait(void) {
+    modem_wait_start_ms = app_time_ms();
+    at_checked = false;
+}
+
+static void check_modem(void) {
+    at_checked = true;
+    last_at_check_ms = app_time_ms();
+    (void)app_call_check_modem();
+    last_idle_check_ms = app_time_ms();
+    update_sensor_state();
+}
+
 static void prvCommTask(void *pvParameters) {
     (void)pvParameters;
 
-    uint32_t last_at_check_ms = 0;
-    uint32_t last_idle_check_ms = 0;
-    bool at_checked = false;
-
     start_can();
     app_call_init();
-    uint32_t modem_wait_start = app_time_ms();
+    restart_modem_wait();
 
     for (;;) {
         update_sensor_state();
@@ -124,25 +137,20 @@ static void prvCommTask(void *pvParameters) {
             app_call_poll_modem();
             app_call_service();
             if (app_call_stage() == CALL_STAGE_MODEM_RESET) {
-                modem_wait_start = app_time_ms();
-                at_checked = false;
+                restart_modem_wait();
             }
             vTaskDelay(pdMS_TO_TICKS(TASK_COMM_IDLE_DELAY_MS));
             continue;
         }
 
-        if ((now - modem_wait_start) < MODEM_BOOT_WAIT_MS) {
+        if ((now - modem_wait_start_ms) < MODEM_BOOT_WAIT_MS) {
             vTaskDelay(pdMS_TO_TICKS(TASK_COMM_WAIT_DELAY_MS));
             continue;
         }
 
         if (!app_call_modem_ready()) {
             if (!at_checked || ((now - last_at_check_ms) >= MODEM_AT_RETRY_MS)) {
-                at_checked = true;
-                last_at_check_ms = now;
-                (void)app_call_check_modem();
-                last_idle_check_ms = app_time_ms();
-                update_sensor_state();
+                check_modem();
             }
             vTaskDelay(pdMS_TO_TICKS(TASK_COMM_WAIT_DELAY_MS));
             continue;
@@ -150,8 +158,7 @@ static void prvCommTask(void *pvParameters) {
 
         app_call_poll_modem();
         if (!app_call_modem_ready()) {
-            modem_wait_start = app_time_ms();
-            at_checked = false;
+            restart_modem_wait();
             vTaskDelay(pdMS_TO_TICKS(TASK_COMM_WAIT_DELAY_MS));
             continue;
         }
@@ -161,11 +168,7 @@ static void prvCommTask(void *pvParameters) {
         /* An idle modem can reboot without notice; re-check it before an alarm needs it. */
         if (!alarm_wants_call() &&
             ((app_time_ms() - last_idle_check_ms) >= MODEM_IDLE_CHECK_MS)) {
-            at_checked = true;
-            last_at_check_ms = app_time_ms();
-            (void)app_call_check_modem();
-            last_idle_check_ms = app_time_ms();
-            update_sensor_state();
+            check_modem();
         }
 
         if (app_call_modem_ready() && alarm_wants_call() &&

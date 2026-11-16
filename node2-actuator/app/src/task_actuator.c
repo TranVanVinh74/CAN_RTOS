@@ -14,7 +14,6 @@
 #include "hal_buttons.h"
 #include "hal_can.h"
 #include "hal_relay.h"
-#include "hal_tft_graphics.h"
 #include "sensor_status.h"
 
 static TaskHandle_t xActuatorTaskHandle = NULL;
@@ -130,7 +129,7 @@ static void prvActuatorTask(void *pvParameters) {
         TickType_t now = xTaskGetTickCount();
         if ((TickType_t)(now - last_button_tick) >= pdMS_TO_TICKS(BUTTON_SCAN_MS)) {
             last_button_tick = now;
-            bool changed = process_buttons(&view, &settings, now * portTICK_PERIOD_MS);
+            bool changed = process_buttons(&view, &settings, app_time_ms());
             if (changed && view.has_data &&
                 ((TickType_t)(now - last_sensor_tick) <=
                  pdMS_TO_TICKS(SENSOR_FRESH_TIMEOUT_MS))) {
@@ -152,7 +151,7 @@ static void prvActuatorTask(void *pvParameters) {
         if ((TickType_t)(now - last_ui_tick) >= pdMS_TO_TICKS(UI_FRAME_MS)) {
             last_ui_tick = now;
             app_ui_update(&view);
-            app_ui_draw(now * portTICK_PERIOD_MS);
+            app_ui_draw(app_time_ms());
         }
     }
 }
