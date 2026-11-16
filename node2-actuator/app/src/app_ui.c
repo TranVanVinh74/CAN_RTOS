@@ -259,6 +259,10 @@ static bool available(const UiView_t *view) {
     return view->has_data && !view->stale && !view->bus_error;
 }
 
+static bool sensor_live(const UiView_t *view, uint8_t fault) {
+    return available(view) && (view->sensor_faults & fault) == 0U;
+}
+
 static void value_label(uint16_t value, bool present, const char *suffix) {
     set_label("");
     if (present) {
@@ -276,11 +280,10 @@ static void main_scene(void) {
     };
     UiState_t current = state(&target);
     bool live = available(&target);
-    bool gas_live = live && (target.sensor_faults & SENSOR_FAULT_GAS) == 0U;
-    bool dht_live = live && (target.sensor_faults & SENSOR_FAULT_DHT) == 0U;
-    bool gas_alarm = gas_live && target.gas_raw > target.gas_limit_raw;
-    bool gas_warn = gas_live && (uint32_t)target.gas_raw * UI_PERCENT_FULL >=
-                           (uint32_t)target.gas_limit_raw * UI_WARNING_PERCENT;
+    bool gas_live = sensor_live(&target, SENSOR_FAULT_GAS);
+    bool dht_live = sensor_live(&target, SENSOR_FAULT_DHT);
+    bool gas_alarm = gas_live && gas_state(&target) == UI_DANGER;
+    bool gas_warn = gas_live && gas_state(&target) != UI_SAFE;
     bool hot = dht_live && target.temperature_c > target.temperature_limit_c;
     bool alarm_lit = blink_on || current != UI_DANGER;
     uint16_t gas_ink = gas_alarm ? UI_RED : UI_AMBER;
@@ -377,7 +380,7 @@ static void settings_scene(void) {
             text(98U - text_width(&ui_font_small, "NOW"), y + 4U,
                  "NOW", &ui_font_small, UI_MUTED);
             set_label("");
-            if (available(&target) && (target.sensor_faults & SENSOR_FAULT_GAS) == 0U) {
+            if (sensor_live(&target, SENSOR_FAULT_GAS)) {
                 number(target.gas_raw);
             } else {
                 append("--");
@@ -453,8 +456,9 @@ static void stream_scene(void) {
         const UiOp_t *op = &ops[i];
         uint32_t signature = hash_value(UI_HASH_OFFSET, (uint32_t)(uintptr_t)op->mask);
         signature = hash_value(signature, op->color);
-        signature = hash_value(signature, op->x | ((uint32_t)op->y << 8) |
-                               ((uint32_t)op->width << 16) | ((uint32_t)op->height << 24));
+        signature = hash_value(signature, op->x | ((uint32_t)op->y << UI_BITS_PER_BYTE) |
+                               ((uint32_t)op->width << (2U * UI_BITS_PER_BYTE)) |
+                               ((uint32_t)op->height << (3U * UI_BITS_PER_BYTE)));
         hash = hash_value(hash, signature);
         uint8_t last_x = (op->x + op->width - 1U) / UI_TILE_SIZE;
         uint8_t last_y = (op->y + op->height - 1U) / UI_TILE_SIZE;
@@ -515,9 +519,9 @@ void app_ui_reset(void) {
     }
 }
 
-void app_ui_render(const UiView_t *view) {
+void app_ui_update(const UiView_t *view) {
     if (view != NULL) {
-        bool live = available(view) && (view->sensor_faults & SENSOR_FAULT_GAS) == 0U;
+        bool live = sensor_live(view, SENSOR_FAULT_GAS);
         bool sample = !valid || view->sample_id != target.sample_id ||
                       view->gas_raw != target.gas_raw;
         bool boundary = !valid || state(view) != state(&target) ||
@@ -555,7 +559,7 @@ static UiScreen_t screen_for(const UiView_t *view) {
     return (view->stale && view->has_data) ? UI_SCREEN_OFFLINE : UI_SCREEN_MAIN;
 }
 
-void app_ui_tick(uint32_t now_ms) {
+void app_ui_draw(uint32_t now_ms) {
     if (!valid || !hal_tft_ok()) {
         return;
     }
@@ -573,8 +577,7 @@ void app_ui_tick(uint32_t now_ms) {
         shown_gas = (uint16_t)(phase * UI_GAS_GAUGE_FULL_SCALE_PERCENT /
                                (UI_SWEEP_MS / 2U));
     } else {
-        shown_gas = available(&target) && (target.sensor_faults & SENSOR_FAULT_GAS) == 0U ?
-                    display_gas : 0U;
+        shown_gas = sensor_live(&target, SENSOR_FAULT_GAS) ? display_gas : 0U;
     }
     blink_on = (now_ms / UI_BLINK_PERIOD_MS) % 2U == 0U;
     fan_frame = target.has_data && target.fan_on ?
@@ -647,6 +650,6 @@ void app_ui_button(UiView_t *view, UiButton_t button) {
                  temperature - ALERT_TEMPERATURE_STEP_C : ALERT_TEMPERATURE_MIN_C);
         }
     }
-    app_ui_render(view);
+    app_ui_update(view);
 }
 

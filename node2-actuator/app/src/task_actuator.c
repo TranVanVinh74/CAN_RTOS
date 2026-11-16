@@ -14,12 +14,11 @@
 #include "hal_buttons.h"
 #include "hal_can.h"
 #include "hal_relay.h"
-#include "hal_tft_graphics.h"
 #include "sensor_status.h"
 
 static TaskHandle_t xActuatorTaskHandle = NULL;
 
-static bool process_buttons(UiView_t *view, AppSettings_t *active, uint32_t now_ms) {
+static bool process_buttons(UiView_t *view, AlertThresholds_t *active, uint32_t now_ms) {
     static const UiButton_t ui_buttons[BUTTON_COUNT] = {
         [BUTTON_SELECT] = UI_BUTTON_SELECT,
         [BUTTON_PLUS] = UI_BUTTON_PLUS,
@@ -33,7 +32,7 @@ static bool process_buttons(UiView_t *view, AppSettings_t *active, uint32_t now_
         if ((events & (1U << i)) != 0U) {
             /* Edits stay in the view; control thresholds change only after a good write. */
             if ((i == BUTTON_SAVE) && view->edit_mode) {
-                AppSettings_t settings = {
+                AlertThresholds_t settings = {
                     .gas_limit_raw = view->gas_limit_raw,
                     .temperature_limit_c = view->temperature_limit_c,
                 };
@@ -71,6 +70,7 @@ static void on_can_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
         return;
     }
 
+    /* A full queue drops this sample; the next one arrives 500 ms later. */
     (void)xQueueSendFromISR(xSensorQueue, &sample, task_woken);
 }
 
@@ -87,7 +87,8 @@ static bool start_can(void) {
 static void prvActuatorTask(void *pvParameters) {
     (void)pvParameters;
 
-    AppSettings_t settings;
+    AlertThresholds_t settings;
+    /* A missing or corrupt record loads the default thresholds. */
     (void)app_settings_load(&settings);
     UiView_t view = {
         .gas_limit_raw = settings.gas_limit_raw,
@@ -97,9 +98,9 @@ static void prvActuatorTask(void *pvParameters) {
     TickType_t last_sensor_tick = 0;
 
     app_ui_reset();
-    app_ui_render(&view);
+    app_ui_update(&view);
     for (uint8_t frame = 0U; frame < UI_BOOT_LAYOUT_FRAMES; frame++) {
-        app_ui_tick(app_time_ms());
+        app_ui_draw(app_time_ms());
         vTaskDelay(pdMS_TO_TICKS(UI_FRAME_MS));
     }
     bool can_started = start_can();
@@ -130,7 +131,7 @@ static void prvActuatorTask(void *pvParameters) {
         TickType_t now = xTaskGetTickCount();
         if ((TickType_t)(now - last_button_tick) >= pdMS_TO_TICKS(BUTTON_SCAN_MS)) {
             last_button_tick = now;
-            bool changed = process_buttons(&view, &settings, now * portTICK_PERIOD_MS);
+            bool changed = process_buttons(&view, &settings, app_time_ms());
             if (changed && view.has_data &&
                 ((TickType_t)(now - last_sensor_tick) <=
                  pdMS_TO_TICKS(SENSOR_FRESH_TIMEOUT_MS))) {
@@ -151,8 +152,8 @@ static void prvActuatorTask(void *pvParameters) {
         view.bus_error = !can_started || hal_can_bus_fault();
         if ((TickType_t)(now - last_ui_tick) >= pdMS_TO_TICKS(UI_FRAME_MS)) {
             last_ui_tick = now;
-            app_ui_render(&view);
-            app_ui_tick(now * portTICK_PERIOD_MS);
+            app_ui_update(&view);
+            app_ui_draw(app_time_ms());
         }
     }
 }

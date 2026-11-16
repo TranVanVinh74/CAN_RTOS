@@ -25,7 +25,7 @@ typedef enum {
     SETTINGS_RECORD_WORDS
 } SettingsWord_t;
 
-static AppSettings_t saved;
+static AlertThresholds_t saved;
 static bool retry_required;
 
 static uint32_t checksum(const uint16_t words[SETTINGS_RECORD_WORDS]) {
@@ -41,14 +41,14 @@ static uint32_t checksum(const uint16_t words[SETTINGS_RECORD_WORDS]) {
     return ~crc;
 }
 
-bool app_settings_load(AppSettings_t *settings) {
+bool app_settings_load(AlertThresholds_t *settings) {
     if (settings == NULL) {
         return false;
     }
 
     uint16_t words[SETTINGS_RECORD_WORDS];
     bool valid = hal_settings_flash_read(words, SETTINGS_RECORD_WORDS);
-    AppSettings_t loaded = {
+    AlertThresholds_t loaded = {
         .gas_limit_raw = ALERT_GAS_DEFAULT_RAW,
         .temperature_limit_c = ALERT_TEMPERATURE_DEFAULT_C,
     };
@@ -62,7 +62,7 @@ bool app_settings_load(AppSettings_t *settings) {
                 (words[SETTINGS_WORD_TEMPERATURE] <= UINT8_MAX) &&
                 (checksum(words) == stored_crc);
         if (valid) {
-            AppSettings_t candidate = {
+            AlertThresholds_t candidate = {
                 .gas_limit_raw = words[SETTINGS_WORD_GAS],
                 .temperature_limit_c = (uint8_t)words[SETTINGS_WORD_TEMPERATURE],
             };
@@ -78,7 +78,7 @@ bool app_settings_load(AppSettings_t *settings) {
     return valid;
 }
 
-SettingsSaveResult_t app_settings_save(const AppSettings_t *settings) {
+SettingsSaveResult_t app_settings_save(const AlertThresholds_t *settings) {
     if (!alert_thresholds_valid(settings)) {
         return SETTINGS_INVALID;
     }

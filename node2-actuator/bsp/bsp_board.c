@@ -14,7 +14,10 @@
 extern CAN_HandleTypeDef hcan;
 extern SPI_HandleTypeDef hspi1;
 
-/* Read with a debugger once the board stops in Error_Handler. */
+/*
+ * Read with a debugger: the step that stopped the board in Error_Handler, or a CAN start
+ * failure that bsp_board_set_error records while the node keeps running.
+ */
 volatile BoardError_t g_errorCode = BOARD_ERR_NONE;
 volatile char g_stackOverflowTask[configMAX_TASK_NAME_LEN];
 
