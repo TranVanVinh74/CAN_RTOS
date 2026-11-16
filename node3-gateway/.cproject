@@ -39,7 +39,7 @@
 									<listOptionValue builtIn="false" value="../Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM3"/>
 									<listOptionValue builtIn="false" value="../Drivers/CMSIS/Device/ST/STM32F1xx/Include"/>
 									<listOptionValue builtIn="false" value="../Drivers/CMSIS/Include"/>
-									<listOptionValue builtIn="false" value="../bsp"/>
+									<listOptionValue builtIn="false" value="../bsp/inc"/>
 									<listOptionValue builtIn="false" value="../hal/inc"/>
 									<listOptionValue builtIn="false" value="../app/inc"/>
 									<listOptionValue builtIn="false" value="../../common"/>
@@ -63,7 +63,7 @@
 									<listOptionValue builtIn="false" value="../Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM3"/>
 									<listOptionValue builtIn="false" value="../Drivers/CMSIS/Device/ST/STM32F1xx/Include"/>
 									<listOptionValue builtIn="false" value="../Drivers/CMSIS/Include"/>
-									<listOptionValue builtIn="false" value="../bsp"/>
+									<listOptionValue builtIn="false" value="../bsp/inc"/>
 									<listOptionValue builtIn="false" value="../hal/inc"/>
 									<listOptionValue builtIn="false" value="../app/inc"/>
 									<listOptionValue builtIn="false" value="../../common"/>
@@ -139,7 +139,7 @@
 									<listOptionValue builtIn="false" value="../Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM3"/>
 									<listOptionValue builtIn="false" value="../Drivers/CMSIS/Device/ST/STM32F1xx/Include"/>
 									<listOptionValue builtIn="false" value="../Drivers/CMSIS/Include"/>
-									<listOptionValue builtIn="false" value="../bsp"/>
+									<listOptionValue builtIn="false" value="../bsp/inc"/>
 									<listOptionValue builtIn="false" value="../hal/inc"/>
 									<listOptionValue builtIn="false" value="../app/inc"/>
 									<listOptionValue builtIn="false" value="../../common"/>
@@ -162,7 +162,7 @@
 									<listOptionValue builtIn="false" value="../Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM3"/>
 									<listOptionValue builtIn="false" value="../Drivers/CMSIS/Device/ST/STM32F1xx/Include"/>
 									<listOptionValue builtIn="false" value="../Drivers/CMSIS/Include"/>
-									<listOptionValue builtIn="false" value="../bsp"/>
+									<listOptionValue builtIn="false" value="../bsp/inc"/>
 									<listOptionValue builtIn="false" value="../hal/inc"/>
 									<listOptionValue builtIn="false" value="../app/inc"/>
 									<listOptionValue builtIn="false" value="../../common"/>
