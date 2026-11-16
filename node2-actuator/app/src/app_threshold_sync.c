@@ -17,6 +17,10 @@ void app_threshold_sync_init(void) {
     attempted = false;
 }
 
+/*
+ * Resend every THRESHOLD_SYNC_INTERVAL_MS so Node3 recovers the thresholds after its own
+ * reset; a full TX mailbox is retried after THRESHOLD_SYNC_RETRY_MS.
+ */
 void app_threshold_sync_update(const AlertThresholds_t *thresholds, uint32_t now_ms) {
     if (!alert_thresholds_valid(thresholds)) {
         return;

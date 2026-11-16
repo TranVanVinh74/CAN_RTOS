@@ -10,6 +10,7 @@
 extern CAN_HandleTypeDef hcan;
 extern UART_HandleTypeDef huart2;
 
+/* Read with a debugger once the board stops in Error_Handler. */
 volatile BoardError_t g_errorCode = BOARD_ERR_NONE;
 volatile char g_stackOverflowTask[configMAX_TASK_NAME_LEN];
 
@@ -30,6 +31,7 @@ void bsp_board_record_error(void) {
         return;
     }
 
+    /* PLL already locked during the oscillator step: the clock tree setup failed. */
     if ((init_step == BOARD_ERR_OSCILLATOR) && ((RCC->CR & RCC_CR_PLLRDY) != 0U)) {
         g_errorCode = BOARD_ERR_CLOCK;
     } else {

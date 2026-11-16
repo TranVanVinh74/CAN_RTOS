@@ -119,6 +119,7 @@ void app_call_request_hangup(void) {
 void app_call_service(void) {
     switch (app_modem_reply_classify(reply)) {
     case MODEM_REPLY_MODEM_RESET:
+        /* Boot messages mid-call: the modem rebooted (supply dip) and the call is gone. */
         mark_inactive();
         modem_ready = false;
         call_stage = CALL_STAGE_MODEM_RESET;
@@ -136,6 +137,7 @@ void app_call_service(void) {
         break;
     }
 
+    /* Some networks report nothing when the callee rejects, so every call is capped. */
     if (hangup_requested || ((app_time_ms() - call_started_ms) >= CALL_DURATION_MS)) {
         hang_up(CALL_STAGE_HUNG_UP);
     }

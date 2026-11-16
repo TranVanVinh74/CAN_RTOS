@@ -15,6 +15,7 @@ extern ADC_HandleTypeDef hadc1;
 extern CAN_HandleTypeDef hcan;
 extern TIM_HandleTypeDef htim2;
 
+/* Read with a debugger once the board stops in Error_Handler. */
 volatile BoardError_t g_errorCode = BOARD_ERR_NONE;
 volatile char g_stackOverflowTask[configMAX_TASK_NAME_LEN];
 
@@ -22,6 +23,7 @@ static BoardError_t init_step = BOARD_ERR_NONE;
 
 void bsp_board_init(void) {
     init_step = BOARD_ERR_NONE;
+    /* Sensor init failures are not fatal: every read then reports a sensor fault flag. */
     (void)hal_dht11_init(&htim2, BSP_DHT11_PORT, BSP_DHT11_PIN);
     (void)hal_mq5_init(&hadc1);
     hal_can_init(&hcan);
@@ -36,6 +38,7 @@ void bsp_board_record_error(void) {
         return;
     }
 
+    /* PLL already locked during the oscillator step: the clock tree setup failed. */
     if ((init_step == BOARD_ERR_OSCILLATOR) && ((RCC->CR & RCC_CR_PLLRDY) != 0U)) {
         g_errorCode = BOARD_ERR_CLOCK;
     } else {

@@ -63,5 +63,6 @@ bool hal_mq5_read_average(uint8_t samples, uint16_t *gas_raw) {
     }
 
     *gas_raw = mq5_last_value;
+    /* One failed conversion flags the whole average: it no longer covers all samples. */
     return valid_count == samples;
 }

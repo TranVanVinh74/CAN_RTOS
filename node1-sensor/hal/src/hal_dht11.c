@@ -121,8 +121,14 @@ bool hal_dht11_read(Dht11Reading_t *reading) {
     }
 
     set_output_low();
+    /* One extra tick: vTaskDelay(n) can return after n - 1 full ticks. */
     vTaskDelay(pdMS_TO_TICKS(DHT11_START_LOW_MS) + 1U);
 
+    /*
+     * The 40-bit frame is timed in microseconds and takes 4-5 ms. Suspend the scheduler
+     * instead of masking interrupts so SysTick keeps counting; a task switch inside the
+     * frame would break the bit timing.
+     */
     vTaskSuspendAll();
     bool received = read_frame(frame);
     (void)xTaskResumeAll();

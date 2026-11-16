@@ -10,6 +10,10 @@ void hal_can_init(CAN_HandleTypeDef *hcan) {
     can_handle = hcan;
 }
 
+/*
+ * Node1 only transmits, so no RX filter and no RX interrupt are configured. Enabling
+ * FIFO0 reception without a reader keeps the interrupt pending and starves both tasks.
+ */
 CanError_t hal_can_start(void) {
     if (can_handle == NULL) {
         return CAN_ERR_NO_HANDLE;

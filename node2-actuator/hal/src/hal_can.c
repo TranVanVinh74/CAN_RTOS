@@ -59,6 +59,7 @@ CanError_t hal_can_start(void) {
     return CAN_ERR_NONE;
 }
 
+/* Error-passive or bus-off: this node's frames are no longer getting through. */
 bool hal_can_bus_fault(void) {
     if (can_handle == NULL) {
         return true;

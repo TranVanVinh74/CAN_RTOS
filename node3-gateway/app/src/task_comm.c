@@ -49,6 +49,7 @@ static void on_sensor_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
     if (!sensor_faults_valid(sample.sensor_faults)) {
         return;
     }
+    /* Stamped on arrival so freshness does not depend on when the task reads the queue. */
     sample.received_ms = (uint32_t)(xTaskGetTickCountFromISR() * portTICK_PERIOD_MS);
     (void)xQueueOverwriteFromISR(xSensorQueue, &sample, task_woken);
 }
@@ -150,6 +151,7 @@ static void prvCommTask(void *pvParameters) {
 
         update_sensor_state();
 
+        /* An idle modem can reboot without notice; re-check it before an alarm needs it. */
         if (!alarm_wants_call() &&
             ((app_time_ms() - last_idle_check_ms) >= MODEM_IDLE_CHECK_MS)) {
             at_checked = true;

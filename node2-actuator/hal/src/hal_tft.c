@@ -77,6 +77,7 @@ static void rst_set(bool high) {
     pin_write(tft_pins.rst_port, tft_pins.rst_pin, high);
 }
 
+/* The first SPI failure stops all transfers; the relay keeps working without a display. */
 static void spi_transmit(uint8_t *data, uint16_t size) {
     if (spi_failed) {
         return;

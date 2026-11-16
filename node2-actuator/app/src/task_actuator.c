@@ -31,6 +31,7 @@ static bool process_buttons(UiView_t *view, AppSettings_t *active, uint32_t now_
 
     for (uint8_t i = 0U; i < BUTTON_COUNT; i++) {
         if ((events & (1U << i)) != 0U) {
+            /* Edits stay in the view; control thresholds change only after a good write. */
             if ((i == BUTTON_SAVE) && view->edit_mode) {
                 AppSettings_t settings = {
                     .gas_limit_raw = view->gas_limit_raw,
@@ -73,6 +74,7 @@ static void on_can_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
     (void)xQueueSendFromISR(xSensorQueue, &sample, task_woken);
 }
 
+/* Without CAN, Node2 keeps running so the screen can show BUS ERROR. */
 static bool start_can(void) {
     CanError_t error = hal_can_start();
     if (error != CAN_ERR_NONE) {

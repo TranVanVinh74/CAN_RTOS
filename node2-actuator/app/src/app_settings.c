@@ -82,6 +82,10 @@ SettingsSaveResult_t app_settings_save(const AppSettings_t *settings) {
     if (!alert_thresholds_valid(settings)) {
         return SETTINGS_INVALID;
     }
+    /*
+     * Skip unchanged values to spare flash erase cycles, unless the previous write failed
+     * and may have left the page erased.
+     */
     if (!retry_required && (settings->gas_limit_raw == saved.gas_limit_raw) &&
         (settings->temperature_limit_c == saved.temperature_limit_c)) {
         return SETTINGS_UNCHANGED;

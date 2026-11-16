@@ -107,6 +107,10 @@ void hal_a7680c_irq_handler(void) {
         return;
     }
 
+    /*
+     * Reading DR clears RXNE and ORE. The ring buffer has one producer (this ISR, writes
+     * rx_head) and one consumer (the COMM task, writes rx_tail).
+     */
     uint8_t byte = (uint8_t)uart->DR;
 
     if ((status & USART_SR_RXNE) == 0U) {
