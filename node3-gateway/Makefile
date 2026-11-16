@@ -1,6 +1,3 @@
-# Standalone Makefile for node3-gateway (STM32F103C8T6) - arm-none-eabi-gcc, no CubeIDE.
-# Usage: cd node3-gateway && make   (or: make -C node3-gateway)
-
 NODE    := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 COMMON  := $(abspath $(NODE)/../common)
 BUILD   := $(NODE)/build
