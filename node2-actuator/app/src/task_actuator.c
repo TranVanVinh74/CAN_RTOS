@@ -70,6 +70,7 @@ static void on_can_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
         return;
     }
 
+    /* A full queue drops this sample; the next one arrives 500 ms later. */
     (void)xQueueSendFromISR(xSensorQueue, &sample, task_woken);
 }
 
@@ -87,6 +88,7 @@ static void prvActuatorTask(void *pvParameters) {
     (void)pvParameters;
 
     AlertThresholds_t settings;
+    /* A missing or corrupt record loads the default thresholds. */
     (void)app_settings_load(&settings);
     UiView_t view = {
         .gas_limit_raw = settings.gas_limit_raw,
