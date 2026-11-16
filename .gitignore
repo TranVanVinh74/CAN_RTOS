@@ -56,10 +56,5 @@ board_uid.mk
 /docs/
 /rules/
 
-# AI assistant files
-CLAUDE.md
-.claude/
-AGENTS.md
-
 # Local UI development tools and generated previews
 /tools/
