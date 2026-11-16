@@ -18,7 +18,7 @@
 static TaskHandle_t xCommTaskHandle = NULL;
 
 static SensorData_t latest_sensor = {0};
-static bool sensor_seen = false;
+static bool has_sample = false;
 static bool sensor_fresh = false;
 static bool alarm_active = false;
 static AlertThresholds_t active_thresholds = {
@@ -79,16 +79,23 @@ static void update_sensor_state(void) {
 
     if (xQueueReceive(xSensorQueue, &sample, 0U) == pdPASS) {
         latest_sensor = sample;
-        sensor_seen = true;
+        has_sample = true;
     }
 
-    sensor_fresh = sensor_seen &&
+    sensor_fresh = has_sample &&
                    ((app_time_ms() - latest_sensor.received_ms) <= SENSOR_FRESH_TIMEOUT_MS);
-    if (sensor_fresh) {
-        alarm_active = sensor_alarm_should_run(alarm_active, latest_sensor.gas_raw,
-                                               latest_sensor.temperature_c,
-                                               latest_sensor.sensor_faults, &active_thresholds);
+    /*
+     * Drop a stale sample: after about 49.7 days without data the millisecond counter
+     * wraps and the old sample would look fresh again.
+     */
+    if (!sensor_fresh) {
+        has_sample = false;
+        return;
     }
+
+    alarm_active = sensor_alarm_should_run(alarm_active, latest_sensor.gas_raw,
+                                           latest_sensor.temperature_c,
+                                           latest_sensor.sensor_faults, &active_thresholds);
 }
 
 static bool alarm_wants_call(void) {
