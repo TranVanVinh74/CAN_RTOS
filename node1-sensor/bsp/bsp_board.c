@@ -5,26 +5,71 @@
 
 #include "main.h"
 
-#include "hal_can.h"
 #include "hal_dht11.h"
 #include "hal_mq5.h"
+
+#define BSP_DHT11_PORT GPIOA
+#define BSP_DHT11_PIN GPIO_PIN_2
 
 extern ADC_HandleTypeDef hadc1;
 extern CAN_HandleTypeDef hcan;
 extern TIM_HandleTypeDef htim2;
 
+/* Read with a debugger once the board stops in Error_Handler. */
+volatile BoardError_t g_errorCode = BOARD_ERR_NONE;
 volatile char g_stackOverflowTask[configMAX_TASK_NAME_LEN];
 
+static BoardError_t init_step = BOARD_ERR_NONE;
+
 void bsp_board_init(void) {
-    hal_dht11_init(&htim2, BSP_DHT11_PORT, BSP_DHT11_PIN);
-    hal_mq5_init(&hadc1);
+    init_step = BOARD_ERR_NONE;
+    /* Sensor init failures are not fatal: every read then reports a sensor fault flag. */
+    (void)hal_dht11_init(&htim2, BSP_DHT11_PORT, BSP_DHT11_PIN);
+    (void)hal_mq5_init(&hadc1);
     hal_can_init(&hcan);
+}
+
+void bsp_board_set_init_step(BoardError_t step) {
+    init_step = step;
+}
+
+void bsp_board_record_error(void) {
+    if (g_errorCode != BOARD_ERR_NONE) {
+        return;
+    }
+
+    /* PLL already locked during the oscillator step: the clock tree setup failed. */
+    if ((init_step == BOARD_ERR_OSCILLATOR) && ((RCC->CR & RCC_CR_PLLRDY) != 0U)) {
+        g_errorCode = BOARD_ERR_CLOCK;
+    } else {
+        g_errorCode = init_step;
+    }
+}
+
+void bsp_board_fail(BoardError_t error) {
+    g_errorCode = error;
+    Error_Handler();
+}
+
+BoardError_t bsp_board_can_error(CanError_t error) {
+    switch (error) {
+    case CAN_ERR_NONE:
+        return BOARD_ERR_NONE;
+    case CAN_ERR_FILTER:
+        return BOARD_ERR_CAN_FILTER;
+    case CAN_ERR_NOTIFICATION:
+        return BOARD_ERR_CAN_NOTIFICATION;
+    case CAN_ERR_NO_HANDLE:
+    case CAN_ERR_START:
+    default:
+        return BOARD_ERR_CAN_START;
+    }
 }
 
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {
     (void)xTask;
-    for (uint32_t i = 0; i < (sizeof(g_stackOverflowTask) - 1U) && (pcTaskName[i] != '\0'); i++) {
+    for (uint32_t i = 0; (i < sizeof(g_stackOverflowTask) - 1U) && (pcTaskName[i] != '\0'); i++) {
         g_stackOverflowTask[i] = pcTaskName[i];
     }
-    Error_Handler();
+    bsp_board_fail(BOARD_ERR_STACK_OVERFLOW);
 }

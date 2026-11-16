@@ -8,7 +8,6 @@
 /* USER CODE BEGIN Includes */
 #include "app_ipc.h"
 #include "bsp_board.h"
-#include "hal_can.h"
 #include "task_comm.h"
 /* USER CODE END Includes */
 
@@ -85,7 +84,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-
+    bsp_board_init();
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -98,8 +97,6 @@ int main(void)
   /* USER CODE END RTOS_TIMERS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
-    bsp_board_init();
-
     if (!app_ipc_init()) {
         bsp_board_fail(BOARD_ERR_QUEUE);
     }
@@ -346,7 +343,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-    g_canError = HAL_CAN_GetError(&hcan);
     bsp_board_record_error();
 
     __disable_irq();

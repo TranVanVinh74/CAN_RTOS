@@ -8,8 +8,8 @@
 #include "queue.h"
 
 typedef struct {
-    uint8_t temperature;
-    uint8_t humidity;
+    uint8_t temperature_c;
+    uint8_t humidity_pct;
     uint16_t gas_raw;
     uint8_t sensor_faults;
 } SensorData_t;

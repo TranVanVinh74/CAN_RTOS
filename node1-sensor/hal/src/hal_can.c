@@ -1,55 +1,44 @@
 #include "hal_can.h"
 
-#define CAN_MAX_DLC 8U
+#include <stddef.h>
 
-volatile uint8_t g_canError = CAN_ERR_NONE;
-volatile uint32_t g_canTxCount = 0;
-volatile uint32_t g_canTxFailCount = 0;
+#define CAN_STANDARD_ID_MAX 0x7FFU
 
 static CAN_HandleTypeDef *can_handle = NULL;
 
-bool hal_can_init(CAN_HandleTypeDef *hcan) {
-    if (hcan == NULL) {
-        g_canError = CAN_ERR_NO_HANDLE;
-        return false;
-    }
-
-    if (HAL_CAN_Start(hcan) != HAL_OK) {
-        g_canError = CAN_ERR_START;
-        return false;
-    }
-
+void hal_can_init(CAN_HandleTypeDef *hcan) {
     can_handle = hcan;
-    g_canError = CAN_ERR_NONE;
-    return true;
+}
+
+/*
+ * Node1 only transmits, so no RX filter and no RX interrupt are configured. Enabling
+ * FIFO0 reception without a reader keeps the interrupt pending and starves both tasks.
+ */
+CanError_t hal_can_start(void) {
+    if (can_handle == NULL) {
+        return CAN_ERR_NO_HANDLE;
+    }
+
+    if (HAL_CAN_Start(can_handle) != HAL_OK) {
+        return CAN_ERR_START;
+    }
+
+    return CAN_ERR_NONE;
 }
 
 bool hal_can_send(uint32_t std_id, const uint8_t *data, uint8_t len) {
+    if ((can_handle == NULL) || (data == NULL) || (std_id > CAN_STANDARD_ID_MAX) ||
+        (len > HAL_CAN_MAX_DLC) || (HAL_CAN_GetTxMailboxesFreeLevel(can_handle) == 0U)) {
+        return false;
+    }
+
     CAN_TxHeaderTypeDef header = {0};
     uint32_t mailbox;
 
-    if ((can_handle == NULL) || (data == NULL) || (len > CAN_MAX_DLC)) {
-        g_canTxFailCount++;
-        return false;
-    }
-
-    if (HAL_CAN_GetTxMailboxesFreeLevel(can_handle) == 0U) {
-        g_canTxFailCount++;
-        return false;
-    }
-
     header.StdId = std_id;
-    header.ExtId = 0U;
-    header.RTR = CAN_RTR_DATA;
     header.IDE = CAN_ID_STD;
+    header.RTR = CAN_RTR_DATA;
     header.DLC = len;
     header.TransmitGlobalTime = DISABLE;
-
-    if (HAL_CAN_AddTxMessage(can_handle, &header, data, &mailbox) != HAL_OK) {
-        g_canTxFailCount++;
-        return false;
-    }
-
-    g_canTxCount++;
-    return true;
+    return HAL_CAN_AddTxMessage(can_handle, &header, data, &mailbox) == HAL_OK;
 }

@@ -6,9 +6,6 @@
 #include "can_protocol.h"
 #include "hal_can.h"
 
-volatile uint32_t g_thresholdTxQueuedCount = 0U;
-volatile uint32_t g_thresholdTxFailCount = 0U;
-
 static AlertThresholds_t last_sent;
 static uint32_t last_sent_ms;
 static uint32_t last_attempt_ms;
@@ -20,6 +17,10 @@ void app_threshold_sync_init(void) {
     attempted = false;
 }
 
+/*
+ * Resend every THRESHOLD_SYNC_INTERVAL_MS so Node3 recovers the thresholds after its own
+ * reset; a full TX mailbox is retried after THRESHOLD_SYNC_RETRY_MS.
+ */
 void app_threshold_sync_update(const AlertThresholds_t *thresholds, uint32_t now_ms) {
     if (!alert_thresholds_valid(thresholds)) {
         return;
@@ -40,8 +41,5 @@ void app_threshold_sync_update(const AlertThresholds_t *thresholds, uint32_t now
         last_sent_ms = now_ms;
         sent = true;
         attempted = false;
-        g_thresholdTxQueuedCount++;
-    } else {
-        g_thresholdTxFailCount++;
     }
 }

@@ -11,12 +11,8 @@
 #define MODEM_AT_POLL_MS 10U
 #define MODEM_AT_REPLY_LEN 128U
 #define MODEM_RX_BUFFER_LEN 256U
-
-volatile uint32_t g_uartTxStatus = HAL_OK;
-volatile uint32_t g_uartError = 0;
-volatile uint32_t g_uartRxCount = 0;
-volatile uint32_t g_uartOverrunCount = 0;
-volatile uint32_t g_uartRxDropCount = 0;
+#define MODEM_CMD_AT "AT\r\n"
+#define MODEM_REPLY_OK "OK"
 
 static UART_HandleTypeDef *modem_uart = NULL;
 static uint8_t rx_buffer[MODEM_RX_BUFFER_LEN];
@@ -72,12 +68,8 @@ bool hal_a7680c_send(const char *text) {
         return false;
     }
 
-    HAL_StatusTypeDef status = HAL_UART_Transmit(modem_uart, (const uint8_t *)text,
-                                                 (uint16_t)strlen(text), MODEM_TX_TIMEOUT_MS);
-
-    g_uartTxStatus = (uint32_t)status;
-    g_uartError = HAL_UART_GetError(modem_uart);
-    return status == HAL_OK;
+    return HAL_UART_Transmit(modem_uart, (const uint8_t *)text, (uint16_t)strlen(text),
+                             MODEM_TX_TIMEOUT_MS) == HAL_OK;
 }
 
 bool hal_a7680c_read_byte(uint8_t *byte) {
@@ -100,7 +92,7 @@ bool hal_a7680c_is_ready(void) {
     if (modem_uart == NULL) {
         return false;
     }
-    return send_and_wait("AT\r\n", "OK", MODEM_AT_TIMEOUT_MS);
+    return send_and_wait(MODEM_CMD_AT, MODEM_REPLY_OK, MODEM_AT_TIMEOUT_MS);
 }
 
 void hal_a7680c_irq_handler(void) {
@@ -115,11 +107,12 @@ void hal_a7680c_irq_handler(void) {
         return;
     }
 
-    uint8_t byte = (uint8_t)(uart->DR & 0xFFU);
+    /*
+     * Reading DR clears RXNE and ORE. The ring buffer has one producer (this ISR, writes
+     * rx_head) and one consumer (the COMM task, writes rx_tail).
+     */
+    uint8_t byte = (uint8_t)uart->DR;
 
-    if ((status & USART_SR_ORE) != 0U) {
-        g_uartOverrunCount++;
-    }
     if ((status & USART_SR_RXNE) == 0U) {
         return;
     }
@@ -128,11 +121,9 @@ void hal_a7680c_irq_handler(void) {
     uint16_t next = next_index(head);
 
     if (next == rx_tail) {
-        g_uartRxDropCount++;
         return;
     }
 
     rx_buffer[head] = byte;
     rx_head = next;
-    g_uartRxCount++;
 }
