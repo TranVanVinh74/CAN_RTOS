@@ -515,7 +515,7 @@ void app_ui_reset(void) {
     }
 }
 
-void app_ui_render(const UiView_t *view) {
+void app_ui_update(const UiView_t *view) {
     if (view != NULL) {
         bool live = available(view) && (view->sensor_faults & SENSOR_FAULT_GAS) == 0U;
         bool sample = !valid || view->sample_id != target.sample_id ||
@@ -555,7 +555,7 @@ static UiScreen_t screen_for(const UiView_t *view) {
     return (view->stale && view->has_data) ? UI_SCREEN_OFFLINE : UI_SCREEN_MAIN;
 }
 
-void app_ui_tick(uint32_t now_ms) {
+void app_ui_draw(uint32_t now_ms) {
     if (!valid || !hal_tft_ok()) {
         return;
     }
@@ -647,6 +647,6 @@ void app_ui_button(UiView_t *view, UiButton_t button) {
                  temperature - ALERT_TEMPERATURE_STEP_C : ALERT_TEMPERATURE_MIN_C);
         }
     }
-    app_ui_render(view);
+    app_ui_update(view);
 }
 

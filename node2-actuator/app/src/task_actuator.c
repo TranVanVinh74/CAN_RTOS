@@ -19,7 +19,7 @@
 
 static TaskHandle_t xActuatorTaskHandle = NULL;
 
-static bool process_buttons(UiView_t *view, AppSettings_t *active, uint32_t now_ms) {
+static bool process_buttons(UiView_t *view, AlertThresholds_t *active, uint32_t now_ms) {
     static const UiButton_t ui_buttons[BUTTON_COUNT] = {
         [BUTTON_SELECT] = UI_BUTTON_SELECT,
         [BUTTON_PLUS] = UI_BUTTON_PLUS,
@@ -33,7 +33,7 @@ static bool process_buttons(UiView_t *view, AppSettings_t *active, uint32_t now_
         if ((events & (1U << i)) != 0U) {
             /* Edits stay in the view; control thresholds change only after a good write. */
             if ((i == BUTTON_SAVE) && view->edit_mode) {
-                AppSettings_t settings = {
+                AlertThresholds_t settings = {
                     .gas_limit_raw = view->gas_limit_raw,
                     .temperature_limit_c = view->temperature_limit_c,
                 };
@@ -87,7 +87,7 @@ static bool start_can(void) {
 static void prvActuatorTask(void *pvParameters) {
     (void)pvParameters;
 
-    AppSettings_t settings;
+    AlertThresholds_t settings;
     (void)app_settings_load(&settings);
     UiView_t view = {
         .gas_limit_raw = settings.gas_limit_raw,
@@ -97,9 +97,9 @@ static void prvActuatorTask(void *pvParameters) {
     TickType_t last_sensor_tick = 0;
 
     app_ui_reset();
-    app_ui_render(&view);
+    app_ui_update(&view);
     for (uint8_t frame = 0U; frame < UI_BOOT_LAYOUT_FRAMES; frame++) {
-        app_ui_tick(app_time_ms());
+        app_ui_draw(app_time_ms());
         vTaskDelay(pdMS_TO_TICKS(UI_FRAME_MS));
     }
     bool can_started = start_can();
@@ -151,8 +151,8 @@ static void prvActuatorTask(void *pvParameters) {
         view.bus_error = !can_started || hal_can_bus_fault();
         if ((TickType_t)(now - last_ui_tick) >= pdMS_TO_TICKS(UI_FRAME_MS)) {
             last_ui_tick = now;
-            app_ui_render(&view);
-            app_ui_tick(now * portTICK_PERIOD_MS);
+            app_ui_update(&view);
+            app_ui_draw(now * portTICK_PERIOD_MS);
         }
     }
 }

@@ -35,9 +35,9 @@ typedef enum {
     UI_BUTTON_COUNT
 } UiButton_t;
 
-void app_ui_button(UiView_t *view, UiButton_t button);
-void app_ui_tick(uint32_t now_ms);
 void app_ui_reset(void);
-void app_ui_render(const UiView_t *view);
+void app_ui_update(const UiView_t *view);
+void app_ui_draw(uint32_t now_ms);
+void app_ui_button(UiView_t *view, UiButton_t button);
 
 #endif
