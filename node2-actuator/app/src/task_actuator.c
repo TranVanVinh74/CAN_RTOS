@@ -4,7 +4,6 @@
 #include "task.h"
 
 #include "app_cfg.h"
-#include "app_fan.h"
 #include "app_ipc.h"
 #include "app_settings.h"
 #include "app_threshold_sync.h"
@@ -93,16 +92,12 @@ static bool start_can(void) {
 static void prvActuatorTask(void *pvParameters) {
     (void)pvParameters;
 
-    UiView_t view = {
-        .gas_threshold = APP_GAS_LIMIT_DEFAULT_RAW,
-        .temperature_threshold = APP_TEMPERATURE_LIMIT_DEFAULT_C,
-        .temperature_threshold_configured = true,
-        .edit_mode = false,
-    };
     AppSettings_t settings;
     (void)app_settings_load(&settings);
-    view.gas_threshold = settings.gas_limit_raw;
-    view.temperature_threshold = settings.temperature_limit_c;
+    UiView_t view = {
+        .gas_threshold = settings.gas_limit_raw,
+        .temperature_threshold = settings.temperature_limit_c,
+    };
     app_threshold_sync_init();
     TickType_t last_sensor_tick = 0;
 
@@ -123,8 +118,8 @@ static void prvActuatorTask(void *pvParameters) {
                                 pdMS_TO_TICKS(BUTTON_SCAN_MS) - elapsed : 0U;
 
         if (xQueueReceive(xActuatorQueue, &cmd, wait_ticks) == pdPASS) {
-            hal_relay_set(app_fan_should_run(hal_relay_is_on(), cmd.gas_raw,
-                                             cmd.temperature, cmd.sensor_faults, &settings));
+            hal_relay_set(sensor_fan_should_run(hal_relay_is_on(), cmd.gas_raw, cmd.temperature,
+                                                cmd.sensor_faults, &settings));
 
             last_sensor_tick = xTaskGetTickCount();
             view.sample_id++;
@@ -143,8 +138,9 @@ static void prvActuatorTask(void *pvParameters) {
             if (changed && view.has_data &&
                 ((TickType_t)(now - last_sensor_tick) <=
                  pdMS_TO_TICKS(SCREEN_STALE_TIMEOUT_MS))) {
-                hal_relay_set(app_fan_should_run(hal_relay_is_on(), view.gas_raw,
-                                                 view.temperature, view.sensor_faults, &settings));
+                hal_relay_set(sensor_fan_should_run(hal_relay_is_on(), view.gas_raw,
+                                                    view.temperature, view.sensor_faults,
+                                                    &settings));
                 view.fan_on = hal_relay_is_on();
             }
         }

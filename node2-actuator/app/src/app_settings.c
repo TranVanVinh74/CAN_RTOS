@@ -2,7 +2,6 @@
 
 #include <stddef.h>
 
-#include "app_limits.h"
 #include "hal_settings_flash.h"
 
 #define SETTINGS_MAGIC_LOW 0x4346U
@@ -14,10 +13,6 @@
 
 static AppSettings_t saved;
 static bool retry_required;
-
-static bool valid_settings(const AppSettings_t *settings) {
-    return alert_thresholds_valid(settings);
-}
 
 static uint32_t checksum(const uint16_t words[SETTINGS_RECORD_WORDS]) {
     uint32_t crc = UINT32_MAX;
@@ -40,8 +35,8 @@ bool app_settings_load(AppSettings_t *settings) {
     uint16_t words[SETTINGS_RECORD_WORDS];
     bool valid = hal_settings_flash_read(words, SETTINGS_RECORD_WORDS);
     AppSettings_t loaded = {
-        .gas_limit_raw = APP_GAS_LIMIT_DEFAULT_RAW,
-        .temperature_limit_c = APP_TEMPERATURE_LIMIT_DEFAULT_C,
+        .gas_limit_raw = ALERT_GAS_DEFAULT_RAW,
+        .temperature_limit_c = ALERT_TEMPERATURE_DEFAULT_C,
     };
     if (valid) {
         uint32_t stored_crc = (uint32_t)words[6] | ((uint32_t)words[7] << 16U);
@@ -53,7 +48,7 @@ bool app_settings_load(AppSettings_t *settings) {
                 .gas_limit_raw = words[3],
                 .temperature_limit_c = (uint8_t)words[4],
             };
-            valid = valid_settings(&candidate);
+            valid = alert_thresholds_valid(&candidate);
             if (valid) {
                 loaded = candidate;
             }
@@ -66,7 +61,7 @@ bool app_settings_load(AppSettings_t *settings) {
 }
 
 SettingsSaveResult_t app_settings_save(const AppSettings_t *settings) {
-    if (!valid_settings(settings)) {
+    if (!alert_thresholds_valid(settings)) {
         return SETTINGS_INVALID;
     }
     if (!retry_required && (settings->gas_limit_raw == saved.gas_limit_raw) &&

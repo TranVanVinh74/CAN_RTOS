@@ -2,7 +2,6 @@
 
 #include <stddef.h>
 
-#include "app_limits.h"
 #include "app_ui_assets.h"
 #include "sensor_status.h"
 #include "hal_tft_graphics.h"
@@ -219,7 +218,6 @@ static UiState_t state(const UiView_t *view) {
     }
     if (gas_state(view) == UI_DANGER ||
         (((view->sensor_faults & SENSOR_FAULT_DHT) == 0U) &&
-         view->temperature_threshold_configured &&
          view->temperature > view->temperature_threshold)) {
         return UI_DANGER;
     }
@@ -259,8 +257,7 @@ static void main_scene(void) {
     bool gas_alarm = gas_live && target.gas_raw > target.gas_threshold;
     bool gas_warn = gas_live && (uint32_t)target.gas_raw * UI_PERCENT_FULL >=
                            (uint32_t)target.gas_threshold * UI_WARNING_PERCENT;
-    bool hot = dht_live && target.temperature_threshold_configured &&
-               target.temperature > target.temperature_threshold;
+    bool hot = dht_live && target.temperature > target.temperature_threshold;
     bool alarm_lit = blink_on || current != UI_DANGER;
     uint16_t gas_ink = gas_alarm ? UI_RED : UI_AMBER;
     add(17U, 5U, 14U, 14U, ui_icon_gas,
@@ -315,12 +312,10 @@ static void main_scene(void) {
     add(8U, 122U, 112U, 1U, NULL, UI_LINE);
     add(74U, 127U, 1U, 27U, NULL, UI_LINE);
     text(8U, 127U, "TEMP", &ui_font_small, UI_MUTED);
-    if (target.temperature_threshold_configured) {
-        set_label("MAX ");
-        number(target.temperature_threshold);
-        append("°");
-        text(73U - text_width(&ui_font_small, label), 127U, label, &ui_font_small, UI_MUTED);
-    }
+    set_label("MAX ");
+    number(target.temperature_threshold);
+    append("°");
+    text(73U - text_width(&ui_font_small, label), 127U, label, &ui_font_small, UI_MUTED);
     text(81U, 125U, "HUM", &ui_font_label, UI_MUTED);
     value_label(target.temperature, dht_live, "°C");
     text(69U - text_width(&ui_font_value, label), 139U, label, &ui_font_value,
@@ -348,9 +343,8 @@ static void settings_scene(void) {
         }
         text(12U, y + 4U, gas ? "GAS LIMIT" : "TEMP LIMIT", &ui_font_label,
              selected ? UI_CYAN : UI_MUTED);
-        value_label(gas ? target.gas_threshold : target.temperature_threshold,
-                    gas || target.temperature_threshold_configured,
-                    gas || !target.temperature_threshold_configured ? "" : "°C");
+        value_label(gas ? target.gas_threshold : target.temperature_threshold, true,
+                    gas ? "" : "°C");
         text(12U, y + 17U, label, &ui_font_value, UI_INK);
         if (gas) {
             text(98U - text_width(&ui_font_small, "NOW"), y + 4U,
@@ -591,31 +585,28 @@ void app_ui_button(UiView_t *view, UiButton_t button) {
         bool increase = button == UI_BUTTON_PLUS;
         if (view->selected_threshold == UI_THRESHOLD_GAS) {
             uint16_t gas = view->gas_threshold;
-            if (gas < APP_GAS_LIMIT_MIN_RAW) {
-                gas = APP_GAS_LIMIT_MIN_RAW;
-            } else if (gas > APP_GAS_LIMIT_MAX_RAW) {
-                gas = APP_GAS_LIMIT_MAX_RAW;
+            if (gas < ALERT_GAS_MIN_RAW) {
+                gas = ALERT_GAS_MIN_RAW;
+            } else if (gas > ALERT_GAS_MAX_RAW) {
+                gas = ALERT_GAS_MAX_RAW;
             }
             view->gas_threshold = increase ?
-                (gas < APP_GAS_LIMIT_MAX_RAW - APP_GAS_LIMIT_STEP_RAW ?
-                 gas + APP_GAS_LIMIT_STEP_RAW : APP_GAS_LIMIT_MAX_RAW) :
-                (gas > APP_GAS_LIMIT_MIN_RAW + APP_GAS_LIMIT_STEP_RAW ?
-                 gas - APP_GAS_LIMIT_STEP_RAW : APP_GAS_LIMIT_MIN_RAW);
-        } else if (!view->temperature_threshold_configured) {
-            view->temperature_threshold = APP_TEMPERATURE_LIMIT_DEFAULT_C;
-            view->temperature_threshold_configured = true;
+                (gas < ALERT_GAS_MAX_RAW - ALERT_GAS_STEP_RAW ?
+                 gas + ALERT_GAS_STEP_RAW : ALERT_GAS_MAX_RAW) :
+                (gas > ALERT_GAS_MIN_RAW + ALERT_GAS_STEP_RAW ?
+                 gas - ALERT_GAS_STEP_RAW : ALERT_GAS_MIN_RAW);
         } else {
             uint8_t temperature = view->temperature_threshold;
-            if (temperature < APP_TEMPERATURE_LIMIT_MIN_C) {
-                temperature = APP_TEMPERATURE_LIMIT_MIN_C;
-            } else if (temperature > APP_TEMPERATURE_LIMIT_MAX_C) {
-                temperature = APP_TEMPERATURE_LIMIT_MAX_C;
+            if (temperature < ALERT_TEMPERATURE_MIN_C) {
+                temperature = ALERT_TEMPERATURE_MIN_C;
+            } else if (temperature > ALERT_TEMPERATURE_MAX_C) {
+                temperature = ALERT_TEMPERATURE_MAX_C;
             }
             view->temperature_threshold = increase ?
-                (temperature < APP_TEMPERATURE_LIMIT_MAX_C ?
-                 temperature + APP_TEMPERATURE_LIMIT_STEP_C : APP_TEMPERATURE_LIMIT_MAX_C) :
-                (temperature > APP_TEMPERATURE_LIMIT_MIN_C ?
-                 temperature - APP_TEMPERATURE_LIMIT_STEP_C : APP_TEMPERATURE_LIMIT_MIN_C);
+                (temperature < ALERT_TEMPERATURE_MAX_C ?
+                 temperature + ALERT_TEMPERATURE_STEP_C : ALERT_TEMPERATURE_MAX_C) :
+                (temperature > ALERT_TEMPERATURE_MIN_C ?
+                 temperature - ALERT_TEMPERATURE_STEP_C : ALERT_TEMPERATURE_MIN_C);
         }
     }
     app_ui_render(view);

@@ -3,8 +3,6 @@
 
 #include "FreeRTOS.h"
 
-#include "app_limits.h"
-
 #define TASK_ACTUATOR_PRIO (tskIDLE_PRIORITY + 2)
 #define TASK_ACTUATOR_STACK_WORDS 512U
 #define UI_FRAME_MS 40U
