@@ -42,6 +42,19 @@
 #define UI_WIPE_STEP_MS 40U
 #define UI_WIPE_BAND_PX 40U
 #define UI_SCREEN_HEIGHT TFT_HEIGHT
+#define UI_ICON_PX 14U
+#define UI_STATUS_ICON_ADVANCE 18U
+#define UI_ALPHA_MAX 15U
+#define UI_NIBBLE_BITS 4U
+#define UI_BITS_PER_BYTE 8U
+#define UI_RED_SHIFT 11U
+#define UI_GREEN_SHIFT 5U
+#define UI_GREEN_MAX 63U
+#define UI_BLUE_MAX 31U
+#define UI_DEGREE_UTF8_LEAD 0xC2U
+#define UI_DEGREE_CODE 0xB0U
+#define UI_DECIMAL_BASE 10U
+#define UI_MAX_DIVISOR 10000U
 
 typedef enum {
     UI_SAFE,
@@ -52,6 +65,13 @@ typedef enum {
     UI_BUS_ERROR,
     UI_SENSOR_ERROR
 } UiState_t;
+
+typedef enum {
+    UI_SCREEN_MAIN,
+    UI_SCREEN_SETTINGS,
+    UI_SCREEN_OFFLINE,
+    UI_SCREEN_BUS_ERROR
+} UiScreen_t;
 
 typedef struct {
     const uint8_t *mask;
@@ -76,7 +96,7 @@ static char label[UI_LABEL_CAPACITY];
 static uint8_t label_length;
 static uint32_t tile_hash[UI_TILE_COUNT];
 static uint32_t next_tile_hash[UI_TILE_COUNT];
-static uint8_t tile_valid[UI_TILE_COUNT / 8U];
+static uint8_t tile_valid[UI_TILE_COUNT / UI_BITS_PER_BYTE];
 static uint16_t tile_pixels[UI_TILE_SIZE * UI_TILE_SIZE];
 static uint16_t scan_tile;
 static uint16_t pending_tiles;
@@ -84,7 +104,7 @@ static uint32_t scene_hash;
 static bool blink_on;
 static bool lamp_check;
 static uint8_t fan_frame;
-static uint8_t screen;
+static UiScreen_t screen;
 static uint8_t reveal_height;
 static uint32_t transition_ms;
 static bool screen_started;
@@ -102,16 +122,16 @@ static void set_label(const char *value) {
 }
 
 static void number(uint16_t value) {
-    uint16_t divisor = 10000U;
+    uint16_t divisor = UI_MAX_DIVISOR;
     while (divisor > 1U && value < divisor) {
-        divisor /= 10U;
+        divisor /= UI_DECIMAL_BASE;
     }
     do {
         if (label_length < UI_LABEL_CAPACITY - 1U) {
             label[label_length++] = (char)('0' + value / divisor);
         }
         value %= divisor;
-        divisor /= 10U;
+        divisor /= UI_DECIMAL_BASE;
     } while (divisor != 0U);
     label[label_length] = '\0';
 }
@@ -127,9 +147,9 @@ static const UiGlyph_t *glyph(const UiFont_t *font, uint16_t code) {
 
 static uint16_t next_code(const char **text) {
     uint16_t code = (uint8_t)*(*text)++;
-    if (code == 0xC2U && (uint8_t)**text == 0xB0U) {
+    if (code == UI_DEGREE_UTF8_LEAD && (uint8_t)**text == UI_DEGREE_CODE) {
         (*text)++;
-        code = 0xB0U;
+        code = UI_DEGREE_CODE;
     }
     return code;
 }
@@ -171,12 +191,16 @@ static void centered(uint8_t y, const char *value, const UiFont_t *font, uint16_
     text((uint8_t)((TFT_WIDTH - text_width(font, value)) / 2U), y, value, font, color);
 }
 
+static uint32_t blend_channel(uint32_t fg, uint32_t bg, uint8_t alpha) {
+    return (fg * alpha + bg * (UI_ALPHA_MAX - alpha) + UI_ALPHA_MAX / 2U) / UI_ALPHA_MAX;
+}
+
 static uint16_t blend(uint16_t fg, uint16_t bg, uint8_t alpha) {
-    uint32_t inverse = 15U - alpha;
-    uint32_t r = ((fg >> 11) * alpha + (bg >> 11) * inverse + 7U) / 15U;
-    uint32_t g = (((fg >> 5) & 63U) * alpha + ((bg >> 5) & 63U) * inverse + 7U) / 15U;
-    uint32_t b = ((fg & 31U) * alpha + (bg & 31U) * inverse + 7U) / 15U;
-    return (uint16_t)((r << 11) | (g << 5) | b);
+    uint32_t r = blend_channel(fg >> UI_RED_SHIFT, bg >> UI_RED_SHIFT, alpha);
+    uint32_t g = blend_channel((fg >> UI_GREEN_SHIFT) & UI_GREEN_MAX,
+                               (bg >> UI_GREEN_SHIFT) & UI_GREEN_MAX, alpha);
+    uint32_t b = blend_channel(fg & UI_BLUE_MAX, bg & UI_BLUE_MAX, alpha);
+    return (uint16_t)((r << UI_RED_SHIFT) | (g << UI_GREEN_SHIFT) | b);
 }
 
 static uint16_t gas_percent(const UiView_t *view) {
@@ -260,15 +284,15 @@ static void main_scene(void) {
     bool hot = dht_live && target.temperature_c > target.temperature_limit_c;
     bool alarm_lit = blink_on || current != UI_DANGER;
     uint16_t gas_ink = gas_alarm ? UI_RED : UI_AMBER;
-    add(17U, 5U, 14U, 14U, ui_icon_gas,
+    add(17U, 5U, UI_ICON_PX, UI_ICON_PX, ui_icon_gas,
         live && !gas_live ? UI_AMBER :
         lamp_check || (gas_warn && alarm_lit) ? gas_ink : UI_LINE);
-    add(44U, 5U, 14U, 14U, ui_icon_hot,
+    add(44U, 5U, UI_ICON_PX, UI_ICON_PX, ui_icon_hot,
         live && !dht_live ? UI_AMBER :
         lamp_check || (hot && alarm_lit) ? UI_RED : UI_LINE);
-    add(71U, 5U, 14U, 14U, fans[fan_frame],
+    add(71U, 5U, UI_ICON_PX, UI_ICON_PX, fans[fan_frame],
         lamp_check || (target.has_data && target.fan_on) ? UI_GREEN : UI_LINE);
-    add(98U, 5U, 14U, 14U, ui_icon_link,
+    add(98U, 5U, UI_ICON_PX, UI_ICON_PX, ui_icon_link,
         lamp_check || live ? UI_CYAN : UI_LINE);
     uint16_t gas = gauge_percent();
     for (uint8_t i = 0U; i < UI_ARC_COUNT; i++) {
@@ -305,9 +329,11 @@ static void main_scene(void) {
         static const uint8_t *const cues[] = {
             ui_state_safe, ui_state_warning, ui_state_danger, ui_state_offline, ui_state_waiting
         };
-        uint8_t status_x = (128U - text_width(&ui_font_status, word) - 18U) / 2U;
-        add(status_x, 87U, 14U, 14U, cues[lamp_check ? UI_SAFE : current], status_ink);
-        text(status_x + 18U, 88U, word, &ui_font_status, status_ink);
+        uint8_t status_x =
+            (TFT_WIDTH - text_width(&ui_font_status, word) - UI_STATUS_ICON_ADVANCE) / 2U;
+        add(status_x, 87U, UI_ICON_PX, UI_ICON_PX, cues[lamp_check ? UI_SAFE : current],
+            status_ink);
+        text(status_x + UI_STATUS_ICON_ADVANCE, 88U, word, &ui_font_status, status_ink);
     }
     add(8U, 122U, 112U, 1U, NULL, UI_LINE);
     add(74U, 127U, 1U, 27U, NULL, UI_LINE);
@@ -320,7 +346,8 @@ static void main_scene(void) {
     value_label(target.temperature_c, dht_live, "°C");
     text(69U - text_width(&ui_font_value, label), 139U, label, &ui_font_value,
          hot ? UI_RED : UI_INK);
-    value_label(target.humidity_pct > 100U ? 100U : target.humidity_pct, dht_live, "%");
+    value_label(target.humidity_pct > UI_PERCENT_FULL ? UI_PERCENT_FULL : target.humidity_pct,
+                dht_live, "%");
     text(120U - text_width(&ui_font_value, label), 139U, label, &ui_font_value, UI_INK);
 }
 
@@ -328,8 +355,8 @@ static void settings_scene(void) {
     centered(9U, "SETTINGS", &ui_font_status, UI_INK);
     centered(24U, target.settings_save_error ? "SAVE FAILED" : "SAFETY LIMITS",
              &ui_font_label, target.settings_save_error ? UI_RED : UI_MUTED);
-    for (uint8_t i = 0U; i < 2U; i++) {
-        bool gas = i == 0U;
+    for (uint8_t i = 0U; i < UI_THRESHOLD_COUNT; i++) {
+        bool gas = i == UI_THRESHOLD_GAS;
         bool selected = target.selected_threshold ==
                         (gas ? UI_THRESHOLD_GAS : UI_THRESHOLD_TEMPERATURE);
         uint8_t y = gas ? 43U : 87U;
@@ -366,14 +393,14 @@ static void settings_scene(void) {
     static const uint8_t *const keys[] = {
         ui_icon_next, ui_icon_add, ui_icon_remove, ui_icon_check
     };
-    for (uint8_t i = 0U; i < 4U; i++) {
+    for (uint8_t i = 0U; i < UI_BUTTON_COUNT; i++) {
         add(8U + i * 30U, 137U, 22U, 19U, NULL, UI_PANEL);
-        add(11U + i * 30U, 138U, 16U, 16U, keys[i], i == 3U ? UI_GREEN : UI_INK);
+        add(11U + i * 30U, 138U, 16U, 16U, keys[i], i == UI_BUTTON_SAVE ? UI_GREEN : UI_INK);
     }
 }
 
 static void bus_error_scene(void) {
-    add(57U, 31U, 14U, 14U, ui_state_offline, UI_AMBER);
+    add(57U, 31U, UI_ICON_PX, UI_ICON_PX, ui_state_offline, UI_AMBER);
     centered(59U, "BUS ERROR", &ui_font_status, UI_AMBER);
     add(16U, 81U, 96U, 1U, NULL, UI_LINE);
     centered(95U, "CAN UNAVAILABLE", &ui_font_label, UI_INK);
@@ -397,8 +424,9 @@ static void compose_tile(uint16_t tile) {
         for (uint16_t row = top; row < bottom; row++) {
             for (uint16_t col = left; col < right; col++) {
                 uint16_t index = (row - op->y) * op->width + col - op->x;
-                uint8_t alpha = op->mask == NULL ? 15U :
-                    (op->mask[index / 2U] >> ((index & 1U) == 0U ? 4U : 0U)) & 15U;
+                uint8_t alpha = op->mask == NULL ? UI_ALPHA_MAX :
+                    (op->mask[index / 2U] >> ((index & 1U) == 0U ? UI_NIBBLE_BITS : 0U)) &
+                    UI_ALPHA_MAX;
                 uint8_t pixel = (row - y) * UI_TILE_SIZE + col - x;
                 tile_pixels[pixel] = blend(op->color, tile_pixels[pixel], alpha);
             }
@@ -454,8 +482,9 @@ static void stream_scene(void) {
             continue;
         }
         uint32_t pixels_hash = next_tile_hash[tile];
-        uint8_t bit = (uint8_t)(1U << (tile % 8U));
-        if ((tile_valid[tile / 8U] & bit) == 0U || tile_hash[tile] != pixels_hash) {
+        uint8_t bit = (uint8_t)(1U << (tile % UI_BITS_PER_BYTE));
+        if ((tile_valid[tile / UI_BITS_PER_BYTE] & bit) == 0U ||
+            tile_hash[tile] != pixels_hash) {
             compose_tile(tile);
             hal_tft_draw_region((tile % UI_TILE_COLUMNS) * UI_TILE_SIZE,
                                 (tile / UI_TILE_COLUMNS) * UI_TILE_SIZE,
@@ -464,7 +493,7 @@ static void stream_scene(void) {
                 return;
             }
             tile_hash[tile] = pixels_hash;
-            tile_valid[tile / 8U] |= bit;
+            tile_valid[tile / UI_BITS_PER_BYTE] |= bit;
             sent++;
         }
     }
@@ -516,6 +545,16 @@ void app_ui_render(const UiView_t *view) {
     }
 }
 
+static UiScreen_t screen_for(const UiView_t *view) {
+    if (view->bus_error) {
+        return UI_SCREEN_BUS_ERROR;
+    }
+    if (view->edit_mode) {
+        return UI_SCREEN_SETTINGS;
+    }
+    return (view->stale && view->has_data) ? UI_SCREEN_OFFLINE : UI_SCREEN_MAIN;
+}
+
 void app_ui_tick(uint32_t now_ms) {
     if (!valid || !hal_tft_ok()) {
         return;
@@ -540,8 +579,7 @@ void app_ui_tick(uint32_t now_ms) {
     blink_on = (now_ms / UI_BLINK_PERIOD_MS) % 2U == 0U;
     fan_frame = target.has_data && target.fan_on ?
                 (now_ms / UI_FAN_FRAME_MS) % UI_FAN_FRAME_COUNT : 0U;
-    uint8_t next_screen = target.bus_error ? 3U : target.edit_mode ? 1U :
-                          (target.stale && target.has_data ? 2U : 0U);
+    UiScreen_t next_screen = screen_for(&target);
     if (!screen_started) {
         screen_started = true;
         screen = next_screen;

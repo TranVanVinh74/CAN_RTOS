@@ -11,6 +11,8 @@
 #define MODEM_AT_POLL_MS 10U
 #define MODEM_AT_REPLY_LEN 128U
 #define MODEM_RX_BUFFER_LEN 256U
+#define MODEM_CMD_AT "AT\r\n"
+#define MODEM_REPLY_OK "OK"
 
 static UART_HandleTypeDef *modem_uart = NULL;
 static uint8_t rx_buffer[MODEM_RX_BUFFER_LEN];
@@ -90,7 +92,7 @@ bool hal_a7680c_is_ready(void) {
     if (modem_uart == NULL) {
         return false;
     }
-    return send_and_wait("AT\r\n", "OK", MODEM_AT_TIMEOUT_MS);
+    return send_and_wait(MODEM_CMD_AT, MODEM_REPLY_OK, MODEM_AT_TIMEOUT_MS);
 }
 
 void hal_a7680c_irq_handler(void) {

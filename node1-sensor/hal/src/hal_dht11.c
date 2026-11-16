@@ -93,7 +93,10 @@ static bool read_frame(uint8_t frame[DHT11_FRAME_BYTES]) {
 }
 
 static bool checksum_ok(const uint8_t frame[DHT11_FRAME_BYTES]) {
-    uint8_t sum = (uint8_t)(frame[0] + frame[1] + frame[2] + frame[3]);
+    uint8_t sum = 0U;
+    for (uint8_t i = 0U; i < DHT11_BYTE_CHECKSUM; i++) {
+        sum = (uint8_t)(sum + frame[i]);
+    }
     return sum == frame[DHT11_BYTE_CHECKSUM];
 }
 

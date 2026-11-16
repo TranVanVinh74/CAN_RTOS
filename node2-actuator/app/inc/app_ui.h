@@ -6,7 +6,8 @@
 
 typedef enum {
     UI_THRESHOLD_GAS,
-    UI_THRESHOLD_TEMPERATURE
+    UI_THRESHOLD_TEMPERATURE,
+    UI_THRESHOLD_COUNT
 } UiThreshold_t;
 
 typedef struct {
@@ -30,7 +31,8 @@ typedef enum {
     UI_BUTTON_SELECT,
     UI_BUTTON_PLUS,
     UI_BUTTON_MINUS,
-    UI_BUTTON_SAVE
+    UI_BUTTON_SAVE,
+    UI_BUTTON_COUNT
 } UiButton_t;
 
 void app_ui_button(UiView_t *view, UiButton_t button);

@@ -9,6 +9,7 @@
 
 #define CAN_FILTER_BANK 0U
 #define CAN_SLAVE_START_FILTER_BANK 14U
+#define CAN_FILTER_MATCH_ANY 0x0000U
 #define CAN_STANDARD_ID_MAX 0x7FFU
 
 static CAN_HandleTypeDef *can_handle = NULL;
@@ -20,10 +21,10 @@ static HAL_StatusTypeDef config_accept_all_filter(void) {
     filter.FilterBank = CAN_FILTER_BANK;
     filter.FilterMode = CAN_FILTERMODE_IDMASK;
     filter.FilterScale = CAN_FILTERSCALE_32BIT;
-    filter.FilterIdHigh = 0x0000U;
-    filter.FilterIdLow = 0x0000U;
-    filter.FilterMaskIdHigh = 0x0000U;
-    filter.FilterMaskIdLow = 0x0000U;
+    filter.FilterIdHigh = CAN_FILTER_MATCH_ANY;
+    filter.FilterIdLow = CAN_FILTER_MATCH_ANY;
+    filter.FilterMaskIdHigh = CAN_FILTER_MATCH_ANY;
+    filter.FilterMaskIdLow = CAN_FILTER_MATCH_ANY;
     filter.FilterFIFOAssignment = CAN_RX_FIFO0;
     filter.FilterActivation = ENABLE;
     filter.SlaveStartFilterBank = CAN_SLAVE_START_FILTER_BANK;

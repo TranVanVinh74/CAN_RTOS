@@ -10,6 +10,8 @@
 
 #define CALL_COMMAND_LEN 64U
 #define CALL_REPLY_LEN 256U
+#define MODEM_CMD_HANGUP "ATH\r\n"
+#define MODEM_CMD_DIAL "ATD%s;\r\n"
 
 static CallStage_t call_stage = CALL_STAGE_MODEM_BOOT;
 static bool modem_ready = false;
@@ -46,7 +48,7 @@ static void mark_inactive(void) {
 }
 
 static void hang_up(CallStage_t final_stage) {
-    if (hal_a7680c_send("ATH\r\n")) {
+    if (hal_a7680c_send(MODEM_CMD_HANGUP)) {
         call_stage = final_stage;
     } else {
         fail_modem();
@@ -97,7 +99,7 @@ void app_call_start(const char *phone) {
     hal_a7680c_drain();
     reset_reply();
 
-    snprintf(command, sizeof(command), "ATD%s;\r\n", phone);
+    snprintf(command, sizeof(command), MODEM_CMD_DIAL, phone);
 
     call_stage = CALL_STAGE_DIALING;
     if (!hal_a7680c_send(command)) {
