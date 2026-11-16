@@ -1,6 +1,3 @@
-# Standalone Makefile for node2-actuator (STM32F103C8T6) - arm-none-eabi-gcc, no CubeIDE.
-# Usage: cd node2-actuator && make   (or: make -C node2-actuator)
-
 NODE    := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 COMMON  := $(abspath $(NODE)/../common)
 BUILD   := $(NODE)/build
