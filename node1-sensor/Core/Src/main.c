@@ -89,7 +89,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
+    bsp_board_set_init_step(BOARD_ERR_OSCILLATOR);
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -119,7 +119,7 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_QUEUES */
     if (!app_ipc_init()) {
-        Error_Handler();
+        bsp_board_fail(BOARD_ERR_QUEUE);
     }
   /* USER CODE END RTOS_QUEUES */
 
@@ -130,10 +130,10 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_THREADS */
     if (task_sensor_create() != pdPASS) {
-        Error_Handler();
+        bsp_board_fail(BOARD_ERR_TASK);
     }
     if (task_can_tx_create() != pdPASS) {
-        Error_Handler();
+        bsp_board_fail(BOARD_ERR_TASK);
     }
   /* USER CODE END RTOS_THREADS */
 
@@ -144,6 +144,8 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+    bsp_board_fail(BOARD_ERR_SCHEDULER);
+
     while (1) {
     /* USER CODE END WHILE */
 
@@ -207,7 +209,7 @@ static void MX_ADC1_Init(void)
 {
 
   /* USER CODE BEGIN ADC1_Init 0 */
-
+    bsp_board_set_init_step(BOARD_ERR_ADC_INIT);
   /* USER CODE END ADC1_Init 0 */
 
   ADC_ChannelConfTypeDef sConfig = {0};
@@ -254,7 +256,7 @@ static void MX_CAN_Init(void)
 {
 
   /* USER CODE BEGIN CAN_Init 0 */
-
+    bsp_board_set_init_step(BOARD_ERR_CAN_INIT);
   /* USER CODE END CAN_Init 0 */
 
   /* USER CODE BEGIN CAN_Init 1 */
@@ -291,7 +293,7 @@ static void MX_TIM2_Init(void)
 {
 
   /* USER CODE BEGIN TIM2_Init 0 */
-
+    bsp_board_set_init_step(BOARD_ERR_TIM_INIT);
   /* USER CODE END TIM2_Init 0 */
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
@@ -397,6 +399,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
+    bsp_board_record_error();
+
     __disable_irq();
     while (1) {
     }

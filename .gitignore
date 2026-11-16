@@ -48,17 +48,13 @@ desktop.ini
 
 # Local secrets
 app_secrets.h
+board_uid.mk
 
 # Local project notes and logs
 /__log/
 /logs/
 /docs/
 /rules/
-
-# AI assistant files
-CLAUDE.md
-.claude/
-AGENTS.md
 
 # Local UI development tools and generated previews
 /tools/

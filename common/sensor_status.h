@@ -19,6 +19,7 @@ static inline bool sensor_above_limit(uint16_t gas_raw, uint8_t temperature_c,
             (temperature_c > thresholds->temperature_limit_c));
 }
 
+/* With a sensor fault the fan never switches off: a missing reading cannot prove safety. */
 static inline bool sensor_fan_should_run(bool running, uint16_t gas_raw,
                                         uint8_t temperature_c, uint8_t faults,
                                         const AlertThresholds_t *thresholds) {
@@ -28,6 +29,7 @@ static inline bool sensor_fan_should_run(bool running, uint16_t gas_raw,
     return running || sensor_above_limit(gas_raw, temperature_c, faults, thresholds);
 }
 
+/* With a sensor fault only a valid reading above its limit raises the call alarm. */
 static inline bool sensor_alarm_should_run(bool running, uint16_t gas_raw,
                                           uint8_t temperature_c, uint8_t faults,
                                           const AlertThresholds_t *thresholds) {

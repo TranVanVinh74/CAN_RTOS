@@ -109,31 +109,41 @@ $(HEX): $(ELF)
 $(BIN): $(ELF)
 	$(OBJCOPY) -O binary $< $@
 
-OPENOCD    ?= openocd
+-include $(NODE)/board_uid.mk
+
+ST_FLASH   ?= st-flash
 FLASH_ADDR ?= 0x08000000
+UID_ADDR   := 0x1FFFF7E8
+UID_BYTES  := 12
+UID_FILE   := $(BUILD)/board_uid.bin
 
-# openocd erases only the sectors the image covers, so the settings page at
-# 0x0800FC00 is preserved across 'make flash'.
-flash: $(BIN)
-	$(OPENOCD) -f interface/stlink.cfg -f target/stm32f1x.cfg \
-		-c "init" -c "reset halt" \
-		-c "flash write_image erase unlock $(BIN) $(FLASH_ADDR)" \
-		-c "reset run" -c "shutdown"
+check-uid:
+	@mkdir -p $(BUILD)
+	@if ! $(ST_FLASH) read $(UID_FILE) $(UID_ADDR) $(UID_BYTES) >/dev/null 2>&1; then \
+		echo "cannot read the board UID through ST-Link"; exit 1; \
+	fi; \
+	got=$$(xxd -p $(UID_FILE)); \
+	if [ -z "$(BOARD_UID)" ]; then \
+		echo "board UID $$got; $(NODE)/board_uid.mk is missing"; \
+		echo "create it with: BOARD_UID := <UID of the $(TARGET) board>"; exit 1; \
+	fi; \
+	if [ "$$got" != "$(BOARD_UID)" ]; then \
+		echo "UID mismatch: board $$got, $(TARGET) expects $(BOARD_UID)"; exit 1; \
+	fi; \
+	echo "board UID $$got matches $(TARGET)"
 
-# full-chip erase, including the settings page at 0x0800FC00
-erase:
-	$(OPENOCD) -f interface/stlink.cfg -f target/stm32f1x.cfg \
-		-c "init" -c "reset halt" \
-		-c "flash erase_sector 0 0 63" \
-		-c "shutdown"
+flash: $(BIN) check-uid
+	$(ST_FLASH) --reset write $(BIN) $(FLASH_ADDR)
+
+erase: check-uid
+	$(ST_FLASH) erase
 
 reset:
-	$(OPENOCD) -f interface/stlink.cfg -f target/stm32f1x.cfg \
-		-c "init" -c "reset run" -c "shutdown"
+	$(ST_FLASH) reset
 
 clean:
 	rm -rf $(BUILD)
 
 -include $(OBJ:.o=.d)
 
-.PHONY: all clean flash erase reset
+.PHONY: all clean check-uid flash erase reset

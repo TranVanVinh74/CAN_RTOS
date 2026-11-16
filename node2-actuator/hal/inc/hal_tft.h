@@ -14,10 +14,6 @@ typedef struct {
     uint16_t rst_pin;
 } TftPins_t;
 
-extern volatile uint32_t g_tftSPIErrors;
-extern volatile uint32_t g_tftSPIStatus;
-extern volatile uint32_t g_tftSPIHalError;
-
 void hal_tft_init(SPI_HandleTypeDef *hspi, const TftPins_t *pins);
 
 #endif

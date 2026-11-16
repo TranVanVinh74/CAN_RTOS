@@ -8,7 +8,6 @@
 /* USER CODE BEGIN Includes */
 #include "app_ipc.h"
 #include "bsp_board.h"
-#include "hal_can.h"
 #include "task_actuator.h"
 /* USER CODE END Includes */
 
@@ -336,7 +335,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-    g_canError = HAL_CAN_GetError(&hcan);
     bsp_board_record_error();
 
     __disable_irq();

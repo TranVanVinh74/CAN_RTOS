@@ -9,10 +9,8 @@
 
 #define CAN_FILTER_BANK 0U
 #define CAN_SLAVE_START_FILTER_BANK 14U
+#define CAN_FILTER_MATCH_ANY 0x0000U
 #define CAN_STANDARD_ID_MAX 0x7FFU
-
-volatile uint32_t g_canError = 0;
-volatile uint32_t g_canReadErrorCount = 0;
 
 static CAN_HandleTypeDef *can_handle = NULL;
 static CanRxHandler_t can_rx_handler = NULL;
@@ -23,10 +21,10 @@ static HAL_StatusTypeDef config_accept_all_filter(void) {
     filter.FilterBank = CAN_FILTER_BANK;
     filter.FilterMode = CAN_FILTERMODE_IDMASK;
     filter.FilterScale = CAN_FILTERSCALE_32BIT;
-    filter.FilterIdHigh = 0x0000U;
-    filter.FilterIdLow = 0x0000U;
-    filter.FilterMaskIdHigh = 0x0000U;
-    filter.FilterMaskIdLow = 0x0000U;
+    filter.FilterIdHigh = CAN_FILTER_MATCH_ANY;
+    filter.FilterIdLow = CAN_FILTER_MATCH_ANY;
+    filter.FilterMaskIdHigh = CAN_FILTER_MATCH_ANY;
+    filter.FilterMaskIdLow = CAN_FILTER_MATCH_ANY;
     filter.FilterFIFOAssignment = CAN_RX_FIFO0;
     filter.FilterActivation = ENABLE;
     filter.SlaveStartFilterBank = CAN_SLAVE_START_FILTER_BANK;
@@ -47,27 +45,21 @@ CanError_t hal_can_start(void) {
     }
 
     if (config_accept_all_filter() != HAL_OK) {
-        g_canError = HAL_CAN_GetError(can_handle);
         return CAN_ERR_FILTER;
     }
 
     if (HAL_CAN_Start(can_handle) != HAL_OK) {
-        g_canError = HAL_CAN_GetError(can_handle);
         return CAN_ERR_START;
     }
 
     if (HAL_CAN_ActivateNotification(can_handle, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK) {
-        g_canError = HAL_CAN_GetError(can_handle);
         return CAN_ERR_NOTIFICATION;
     }
 
     return CAN_ERR_NONE;
 }
 
-uint32_t hal_can_get_error(void) {
-    return (can_handle != NULL) ? HAL_CAN_GetError(can_handle) : 0U;
-}
-
+/* Error-passive or bus-off: this node's frames are no longer getting through. */
 bool hal_can_bus_fault(void) {
     if (can_handle == NULL) {
         return true;
@@ -106,7 +98,6 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
         CanRxFrame_t frame;
 
         if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &header, frame.data) != HAL_OK) {
-            g_canReadErrorCount++;
             break;
         }
 

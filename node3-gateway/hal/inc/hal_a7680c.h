@@ -6,12 +6,6 @@
 
 #include "stm32f1xx_hal.h"
 
-extern volatile uint32_t g_uartTxStatus;
-extern volatile uint32_t g_uartError;
-extern volatile uint32_t g_uartRxCount;
-extern volatile uint32_t g_uartOverrunCount;
-extern volatile uint32_t g_uartRxDropCount;
-
 void hal_a7680c_init(UART_HandleTypeDef *huart);
 bool hal_a7680c_send(const char *text);
 bool hal_a7680c_read_byte(uint8_t *byte);
