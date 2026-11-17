@@ -57,24 +57,29 @@ osThreadId defaultTaskHandle;
 
 /* Private function prototypes -----------------------------------------------*/
 /**
- * @brief Configure the HSE/PLL system clock and peripheral bus dividers.
- */
+  * @brief Configure the HSE/PLL system clock and peripheral bus dividers.
+  * @retval None
+  */
 void SystemClock_Config(void);
 /**
- * @brief Initialize board pin modes and initial output levels.
- */
+  * @brief Initialize board pin modes and initial output levels.
+  * @retval None
+  */
 static void MX_GPIO_Init(void);
 /**
- * @brief Initialize the MQ5 ADC input and sampling time.
- */
+  * @brief Initialize the MQ5 ADC input and sampling time.
+  * @retval None
+  */
 static void MX_ADC1_Init(void);
 /**
- * @brief Initialize CAN1 standard bus timing at 500 kbit/s.
- */
+  * @brief Initialize CAN1 standard bus timing at 500 kbit/s.
+  * @retval None
+  */
 static void MX_CAN_Init(void);
 /**
- * @brief Initialize the 1 MHz timer used for DHT11 pulse measurements.
- */
+  * @brief Initialize the 1 MHz timer used for DHT11 pulse measurements.
+  * @retval None
+  */
 static void MX_TIM2_Init(void);
 /**
  * @brief Delete the CubeMX default task after application tasks have been created.
@@ -92,7 +97,7 @@ void StartDefaultTask(void const * argument);
 /* USER CODE END 0 */
 
 /**
-  * @brief Initialize peripherals, bind drivers, create queues and tasks, then start the FreeRTOS scheduler.
+  * @brief  The application entry point.
   * @retval int
   */
 int main(void)
@@ -108,7 +113,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
+    bsp_board_set_init_step(BOARD_ERR_OSCILLATOR);
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -138,7 +143,7 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_QUEUES */
     if (!app_ipc_init()) {
-        Error_Handler();
+        bsp_board_fail(BOARD_ERR_QUEUE);
     }
   /* USER CODE END RTOS_QUEUES */
 
@@ -149,10 +154,10 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_THREADS */
     if (task_sensor_create() != pdPASS) {
-        Error_Handler();
+        bsp_board_fail(BOARD_ERR_TASK);
     }
     if (task_can_tx_create() != pdPASS) {
-        Error_Handler();
+        bsp_board_fail(BOARD_ERR_TASK);
     }
   /* USER CODE END RTOS_THREADS */
 
@@ -163,6 +168,8 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+    bsp_board_fail(BOARD_ERR_SCHEDULER);
+
     while (1) {
     /* USER CODE END WHILE */
 
@@ -172,7 +179,7 @@ int main(void)
 }
 
 /**
-  * @brief Configure the HSE/PLL system clock and peripheral bus dividers.
+  * @brief System Clock Configuration
   * @retval None
   */
 void SystemClock_Config(void)
@@ -218,7 +225,7 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief Initialize the MQ5 ADC input and sampling time.
+  * @brief ADC1 Initialization Function
   * @param None
   * @retval None
   */
@@ -226,7 +233,7 @@ static void MX_ADC1_Init(void)
 {
 
   /* USER CODE BEGIN ADC1_Init 0 */
-
+    bsp_board_set_init_step(BOARD_ERR_ADC_INIT);
   /* USER CODE END ADC1_Init 0 */
 
   ADC_ChannelConfTypeDef sConfig = {0};
@@ -265,7 +272,7 @@ static void MX_ADC1_Init(void)
 }
 
 /**
-  * @brief Initialize CAN1 standard bus timing at 500 kbit/s.
+  * @brief CAN Initialization Function
   * @param None
   * @retval None
   */
@@ -273,7 +280,7 @@ static void MX_CAN_Init(void)
 {
 
   /* USER CODE BEGIN CAN_Init 0 */
-
+    bsp_board_set_init_step(BOARD_ERR_CAN_INIT);
   /* USER CODE END CAN_Init 0 */
 
   /* USER CODE BEGIN CAN_Init 1 */
@@ -302,7 +309,7 @@ static void MX_CAN_Init(void)
 }
 
 /**
-  * @brief Initialize the 1 MHz timer used for DHT11 pulse measurements.
+  * @brief TIM2 Initialization Function
   * @param None
   * @retval None
   */
@@ -310,7 +317,7 @@ static void MX_TIM2_Init(void)
 {
 
   /* USER CODE BEGIN TIM2_Init 0 */
-
+    bsp_board_set_init_step(BOARD_ERR_TIM_INIT);
   /* USER CODE END TIM2_Init 0 */
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
@@ -347,7 +354,7 @@ static void MX_TIM2_Init(void)
 }
 
 /**
-  * @brief Initialize board pin modes and initial output levels.
+  * @brief GPIO Initialization Function
   * @param None
   * @retval None
   */
@@ -392,7 +399,7 @@ void StartDefaultTask(void const * argument)
 }
 
 /**
-  * @brief Increment the HAL millisecond tick when the TIM4 time base expires.
+  * @brief  Period elapsed callback in non blocking mode
   * @note   This function is called  when TIM4 interrupt took place, inside
   * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
   * a global variable "uwTick" used as application time base.
@@ -414,12 +421,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 }
 
 /**
-  * @brief Disable interrupts and stop execution after an unrecoverable error.
+  * @brief  This function is executed in case of error occurrence.
   * @retval None
   */
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
+    bsp_board_record_error();
+
     __disable_irq();
     while (1) {
     }
@@ -428,7 +437,7 @@ void Error_Handler(void)
 
 #ifdef  USE_FULL_ASSERT
 /**
-  * @brief Provide the optional full-assert callback; this implementation leaves reporting to the user.
+  * @brief  Reports the name of the source file and the source line number
   *         where the assert_param error has occurred.
   * @param  file: pointer to the source file name
   * @param  line: assert_param error line source number

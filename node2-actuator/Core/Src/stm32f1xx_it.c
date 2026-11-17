@@ -66,7 +66,7 @@ extern TIM_HandleTypeDef htim4;
 /*           Cortex-M3 Processor Interruption and Exception Handlers          */
 /******************************************************************************/
 /**
-  * @brief Handle a non-maskable interrupt through the generated exception handler.
+  * @brief This function handles Non maskable interrupt.
   */
 void NMI_Handler(void)
 {
@@ -80,7 +80,7 @@ void NMI_Handler(void)
 }
 
 /**
-  * @brief Stop execution when the Cortex-M core reports a hard fault.
+  * @brief This function handles Hard fault interrupt.
   */
 void HardFault_Handler(void)
 {
@@ -95,7 +95,7 @@ void HardFault_Handler(void)
 }
 
 /**
-  * @brief Stop execution when a memory management fault occurs.
+  * @brief This function handles Memory management fault.
   */
 void MemManage_Handler(void)
 {
@@ -110,7 +110,7 @@ void MemManage_Handler(void)
 }
 
 /**
-  * @brief Stop execution when a bus access fault occurs.
+  * @brief This function handles Prefetch fault, memory access fault.
   */
 void BusFault_Handler(void)
 {
@@ -125,7 +125,7 @@ void BusFault_Handler(void)
 }
 
 /**
-  * @brief Stop execution when an instruction usage fault occurs.
+  * @brief This function handles Undefined instruction or illegal state.
   */
 void UsageFault_Handler(void)
 {
@@ -140,7 +140,7 @@ void UsageFault_Handler(void)
 }
 
 /**
-  * @brief Provide the Cortex-M debug monitor exception entry point.
+  * @brief This function handles Debug monitor.
   */
 void DebugMon_Handler(void)
 {
@@ -160,7 +160,7 @@ void DebugMon_Handler(void)
 /******************************************************************************/
 
 /**
-  * @brief Dispatch the CAN1 FIFO0 interrupt to HAL_CAN_IRQHandler.
+  * @brief This function handles USB low priority or CAN RX0 interrupts.
   */
 void USB_LP_CAN1_RX0_IRQHandler(void)
 {
@@ -174,7 +174,7 @@ void USB_LP_CAN1_RX0_IRQHandler(void)
 }
 
 /**
-  * @brief Dispatch the HAL time-base timer interrupt to HAL_TIM_IRQHandler.
+  * @brief This function handles TIM4 global interrupt.
   */
 void TIM4_IRQHandler(void)
 {

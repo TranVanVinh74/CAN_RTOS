@@ -7,13 +7,10 @@
 
 #include <stddef.h>
 
-volatile uint32_t g_relayState = 0;
-volatile uint32_t g_relayPinLevel = 0;
-volatile uint32_t g_relaySwitchCount = 0;
-
 static GPIO_TypeDef *relay_port = NULL;
 static uint16_t relay_pin = 0;
 static GPIO_PinState relay_on_level = GPIO_PIN_SET;
+static bool relay_on = false;
 
 /**
  * @brief Derive the inactive GPIO level from the configured relay polarity.
@@ -37,7 +34,7 @@ void hal_relay_init(GPIO_TypeDef *port, uint16_t pin, GPIO_PinState on_level) {
 }
 
 /**
- * @brief Drive the relay output and update state and transition diagnostics.
+ * @brief Drive the relay output and retain the commanded state.
  * @param[in] on true to energize the relay; false to turn it off.
  */
 void hal_relay_set(bool on) {
@@ -45,15 +42,8 @@ void hal_relay_set(bool on) {
         return;
     }
 
-    uint32_t next_state = on ? 1U : 0U;
-
     HAL_GPIO_WritePin(relay_port, relay_pin, on ? relay_on_level : off_level());
-
-    if (g_relayState != next_state) {
-        g_relaySwitchCount++;
-    }
-    g_relayState = next_state;
-    g_relayPinLevel = ((relay_port->ODR & relay_pin) != 0U) ? 1U : 0U;
+    relay_on = on;
 }
 
 /**
@@ -61,5 +51,5 @@ void hal_relay_set(bool on) {
  * @return true if the relay is commanded on; otherwise false. This is not physical relay feedback.
  */
 bool hal_relay_is_on(void) {
-    return g_relayState != 0U;
+    return relay_on;
 }

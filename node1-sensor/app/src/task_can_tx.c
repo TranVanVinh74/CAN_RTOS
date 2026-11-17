@@ -10,12 +10,21 @@
 
 #include "app_cfg.h"
 #include "app_ipc.h"
+#include "bsp_board.h"
 #include "can_protocol.h"
 #include "hal_can.h"
 
-volatile uint32_t g_canTxQueueTimeoutCount = 0;
-
 static TaskHandle_t xCanTxTaskHandle = NULL;
+
+/**
+ * @brief Start CAN transmission or stop through the board failure handler if startup fails.
+ */
+static void start_can(void) {
+    CanError_t error = hal_can_start();
+    if (error != CAN_ERR_NONE) {
+        bsp_board_fail(bsp_board_can_error(error));
+    }
+}
 
 /**
  * @brief Wait for queued sensor readings, pack five payload bytes and request CAN transmission.
@@ -24,18 +33,21 @@ static TaskHandle_t xCanTxTaskHandle = NULL;
 static void prvCanTxTask(void *pvParameters) {
     (void)pvParameters;
 
+    start_can();
+
     for (;;) {
         SensorData_t data;
         uint8_t payload[CAN_DLC_SENSOR];
 
         if (xQueueReceive(xSensorQueue, &data, pdMS_TO_TICKS(TASK_CAN_TX_QUEUE_WAIT_MS)) !=
             pdPASS) {
-            g_canTxQueueTimeoutCount++;
             continue;
         }
 
-        can_pack_sensor(data.temperature, data.humidity, data.gas_raw, data.sensor_faults, payload);
-        hal_can_send(CAN_ID_SENSOR, payload, CAN_DLC_SENSOR);
+        can_pack_sensor(data.temperature_c, data.humidity_pct, data.gas_raw, data.sensor_faults,
+                        payload);
+        /* Busy TX mailboxes drop the frame; the next sample replaces it one period later. */
+        (void)hal_can_send(CAN_ID_SENSOR, payload, CAN_DLC_SENSOR);
     }
 }
 

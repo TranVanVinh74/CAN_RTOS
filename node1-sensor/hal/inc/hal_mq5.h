@@ -6,32 +6,23 @@
 #ifndef HAL_MQ5_H
 #define HAL_MQ5_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "stm32f1xx_hal.h"
 
-typedef enum {
-    MQ5_ERR_NONE = 0,
-    MQ5_ERR_NO_ADC = 1,
-    MQ5_ERR_CALIBRATION = 2,
-    MQ5_ERR_START = 3,
-    MQ5_ERR_POLL = 4,
-    MQ5_ERR_STOP = 5
-} Mq5Error_t;
-
-extern volatile uint8_t g_mq5Error;
-extern volatile uint32_t g_mq5ReadErrors;
-
 /**
- * @brief Calibrate the ADC and bind it to the MQ5 driver.
- * @param[in] hadc Initialized ADC handle for the MQ5 analog input.
+ * @brief Calibrate the ADC, bind the MQ5 input and reset the retained reading.
+ * @param[in] hadc Initialized ADC handle for the MQ5 analog channel.
+ * @return true if a non-NULL ADC handle was calibrated successfully; otherwise false.
  */
-void hal_mq5_init(ADC_HandleTypeDef *hadc);
+bool hal_mq5_init(ADC_HandleTypeDef *hadc);
 /**
- * @brief Average successful MQ5 ADC conversions and retain the previous value when all conversions fail.
- * @param[in] samples Number of conversions to attempt; zero is treated as one sample.
- * @return Average raw ADC value, or the last valid value if no sample succeeds; inspect g_mq5Error for faults.
+ * @brief Average successful conversions while reporting whether every requested sample succeeded.
+ * @param[in] samples Number of ADC conversions to attempt; zero is treated as one.
+ * @param[out] gas_raw Non-NULL pointer receiving the average of successful samples, or the retained value if all conversions fail.
+ * @return true only if all requested conversions succeeded; false if any conversion failed.
  */
-uint16_t hal_mq5_read_average(uint8_t samples);
+bool hal_mq5_read_average(uint8_t samples, uint16_t *gas_raw);
 
 #endif

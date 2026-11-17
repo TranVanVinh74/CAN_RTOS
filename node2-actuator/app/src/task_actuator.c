@@ -9,38 +9,17 @@
 #include "task.h"
 
 #include "app_cfg.h"
-#include "app_fan.h"
 #include "app_ipc.h"
 #include "app_settings.h"
 #include "app_threshold_sync.h"
+#include "app_time.h"
 #include "app_ui.h"
 #include "bsp_board.h"
 #include "can_protocol.h"
-#include "sensor_status.h"
 #include "hal_buttons.h"
 #include "hal_can.h"
 #include "hal_relay.h"
-#include "hal_tft_graphics.h"
-
-#define TFT_STAGE_WAITING 2U
-#define TFT_STAGE_DATA 3U
-#define TFT_STAGE_ERROR 99U
-
-#define CAN_STAGE_STARTING 1U
-#define CAN_STAGE_RUNNING 2U
-#define CAN_STAGE_ERROR 99U
-
-volatile ActuatorCommand_t g_node2Debug = {0};
-volatile uint32_t g_tftStage = 0;
-volatile uint32_t g_canStage = 0;
-volatile uint32_t g_taskLoops = 0;
-volatile uint32_t g_canRxCount = 0;
-volatile uint32_t g_canProcessedCount = 0;
-volatile uint32_t g_canQueueFullCount = 0;
-volatile uint32_t g_canInvalidCount = 0;
-volatile uint32_t g_buttonPressCount[BUTTON_COUNT] = {0};
-volatile UiView_t g_uiDebug = {0};
-volatile AlertThresholds_t g_activeThresholds = {0};
+#include "sensor_status.h"
 
 static TaskHandle_t xActuatorTaskHandle = NULL;
 
@@ -51,7 +30,7 @@ static TaskHandle_t xActuatorTaskHandle = NULL;
  * @param[in] now_ms Current monotonic time in milliseconds; unsigned subtraction handles wraparound.
  * @return true if a successful save changed the active thresholds; otherwise false.
  */
-static bool process_buttons(UiView_t *view, AppSettings_t *active, uint32_t now_ms) {
+static bool process_buttons(UiView_t *view, AlertThresholds_t *active, uint32_t now_ms) {
     static const UiButton_t ui_buttons[BUTTON_COUNT] = {
         [BUTTON_SELECT] = UI_BUTTON_SELECT,
         [BUTTON_PLUS] = UI_BUTTON_PLUS,
@@ -63,11 +42,11 @@ static bool process_buttons(UiView_t *view, AppSettings_t *active, uint32_t now_
 
     for (uint8_t i = 0U; i < BUTTON_COUNT; i++) {
         if ((events & (1U << i)) != 0U) {
-            g_buttonPressCount[i]++;
+            /* Edits stay in the view; control thresholds change only after a good write. */
             if ((i == BUTTON_SAVE) && view->edit_mode) {
-                AppSettings_t settings = {
-                    .gas_limit_raw = view->gas_threshold,
-                    .temperature_limit_c = view->temperature_threshold,
+                AlertThresholds_t settings = {
+                    .gas_limit_raw = view->gas_limit_raw,
+                    .temperature_limit_c = view->temperature_limit_c,
                 };
                 SettingsSaveResult_t result = app_settings_save(&settings);
                 view->settings_save_error = (result == SETTINGS_SAVE_ERROR) ||
@@ -86,13 +65,15 @@ static bool process_buttons(UiView_t *view, AppSettings_t *active, uint32_t now_
 }
 
 /**
- * @brief Check that a frame is a standard sensor data frame with the expected identifier and DLC.
- * @param[in] frame Input received CAN frame metadata.
- * @return true if the frame metadata matches the sensor protocol.
+ * @brief Match standard CAN data frames by identifier and payload length.
+ * @param[in] frame Non-NULL input CAN frame.
+ * @param[in] std_id Expected standard CAN identifier.
+ * @param[in] dlc Expected payload length in bytes.
+ * @return true if IDE, RTR, identifier and DLC match; otherwise false.
  */
-static bool is_sensor_frame(const CanRxFrame_t *frame) {
-    return !frame->is_extended && !frame->is_remote && (frame->std_id == CAN_ID_SENSOR) &&
-           (frame->dlc == CAN_DLC_SENSOR);
+static bool is_data_frame(const CanRxFrame_t *frame, uint32_t std_id, uint8_t dlc) {
+    return !frame->is_extended && !frame->is_remote && (frame->std_id == std_id) &&
+           (frame->dlc == dlc);
 }
 
 /**
@@ -101,59 +82,33 @@ static bool is_sensor_frame(const CanRxFrame_t *frame) {
  * @param[in,out] task_woken Input/output FreeRTOS wake flag shared by ISR queue operations.
  */
 static void on_can_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
-    ActuatorCommand_t cmd = {0};
+    SensorData_t sample = {0};
 
-    if (!is_sensor_frame(frame)) {
-        g_canInvalidCount++;
+    if (!is_data_frame(frame, CAN_ID_SENSOR, CAN_DLC_SENSOR)) {
         return;
     }
 
-    can_unpack_sensor(frame->data, &cmd.temperature, &cmd.humidity, &cmd.gas_raw,
-                      &cmd.sensor_faults);
-    if (!sensor_faults_valid(cmd.sensor_faults)) {
-        g_canInvalidCount++;
+    can_unpack_sensor(frame->data, &sample.temperature_c, &sample.humidity_pct, &sample.gas_raw,
+                      &sample.sensor_faults);
+    if (!sensor_faults_valid(sample.sensor_faults)) {
         return;
     }
-    g_canRxCount++;
 
-    if (xQueueSendFromISR(xActuatorQueue, &cmd, task_woken) != pdPASS) {
-        g_canQueueFullCount++;
-    }
+    /* A full queue drops this sample; the next one arrives 500 ms later. */
+    (void)xQueueSendFromISR(xSensorQueue, &sample, task_woken);
 }
 
-/**
- * @brief Stage the current UI view and update display diagnostics.
- * @param[in] view Input UI snapshot containing readings, thresholds and connection state.
- */
-static void draw_view(const UiView_t *view) {
-    app_ui_render(view);
-    g_tftStage = hal_tft_ok() ?
-                 (view->has_data ? TFT_STAGE_DATA : TFT_STAGE_WAITING) : TFT_STAGE_ERROR;
-}
-
+/* Without CAN, Node2 keeps running so the screen can show BUS ERROR. */
 /**
  * @brief Start CAN reception and record or report the failing initialization stage.
  * @return true if CAN reception starts; false after recording a startup error.
  */
 static bool start_can(void) {
-    static const BoardError_t board_error[] = {
-        [CAN_ERR_NONE] = BOARD_ERR_NONE,
-        [CAN_ERR_NO_HANDLE] = BOARD_ERR_CAN_START,
-        [CAN_ERR_FILTER] = BOARD_ERR_CAN_FILTER,
-        [CAN_ERR_START] = BOARD_ERR_CAN_START,
-        [CAN_ERR_NOTIFICATION] = BOARD_ERR_CAN_NOTIFICATION,
-    };
-
-    g_canStage = CAN_STAGE_STARTING;
-
     CanError_t error = hal_can_start();
     if (error != CAN_ERR_NONE) {
-        g_errorCode = board_error[error];
-        g_canStage = CAN_STAGE_ERROR;
+        bsp_board_set_error(bsp_board_can_error(error));
         return false;
     }
-
-    g_canStage = CAN_STAGE_RUNNING;
     return true;
 }
 
@@ -164,24 +119,20 @@ static bool start_can(void) {
 static void prvActuatorTask(void *pvParameters) {
     (void)pvParameters;
 
-    UiView_t view = {
-        .gas_threshold = APP_GAS_LIMIT_DEFAULT_RAW,
-        .temperature_threshold = APP_TEMPERATURE_LIMIT_DEFAULT_C,
-        .temperature_threshold_configured = true,
-        .edit_mode = false,
-    };
-    AppSettings_t settings;
+    AlertThresholds_t settings;
+    /* A missing or corrupt record loads the default thresholds. */
     (void)app_settings_load(&settings);
-    view.gas_threshold = settings.gas_limit_raw;
-    view.temperature_threshold = settings.temperature_limit_c;
-    g_activeThresholds = settings;
+    UiView_t view = {
+        .gas_limit_raw = settings.gas_limit_raw,
+        .temperature_limit_c = settings.temperature_limit_c,
+    };
     app_threshold_sync_init();
     TickType_t last_sensor_tick = 0;
 
     app_ui_reset();
-    draw_view(&view);
+    app_ui_update(&view);
     for (uint8_t frame = 0U; frame < UI_BOOT_LAYOUT_FRAMES; frame++) {
-        app_ui_tick(xTaskGetTickCount() * portTICK_PERIOD_MS);
+        app_ui_draw(app_time_ms());
         vTaskDelay(pdMS_TO_TICKS(UI_FRAME_MS));
     }
     bool can_started = start_can();
@@ -189,62 +140,53 @@ static void prvActuatorTask(void *pvParameters) {
     TickType_t last_ui_tick = last_button_tick;
 
     for (;;) {
-        ActuatorCommand_t cmd;
+        SensorData_t sample;
         TickType_t elapsed = xTaskGetTickCount() - last_button_tick;
         TickType_t wait_ticks = elapsed < pdMS_TO_TICKS(BUTTON_SCAN_MS) ?
                                 pdMS_TO_TICKS(BUTTON_SCAN_MS) - elapsed : 0U;
 
-        if (xQueueReceive(xActuatorQueue, &cmd, wait_ticks) == pdPASS) {
-            hal_relay_set(app_fan_should_run(hal_relay_is_on(), cmd.gas_raw,
-                                             cmd.temperature, cmd.sensor_faults, &settings));
-            cmd.fan_state = hal_relay_is_on() ? 1U : 0U;
-
-            g_node2Debug = cmd;
-            g_canProcessedCount++;
+        if (xQueueReceive(xSensorQueue, &sample, wait_ticks) == pdPASS) {
+            hal_relay_set(sensor_fan_should_run(hal_relay_is_on(), sample.gas_raw,
+                                                sample.temperature_c, sample.sensor_faults,
+                                                &settings));
 
             last_sensor_tick = xTaskGetTickCount();
             view.sample_id++;
             view.has_data = true;
-            view.temperature = cmd.temperature;
-            view.humidity = cmd.humidity;
-            view.gas_raw = cmd.gas_raw;
-            view.sensor_faults = cmd.sensor_faults;
-            view.fan_on = cmd.fan_state != 0U;
+            view.temperature_c = sample.temperature_c;
+            view.humidity_pct = sample.humidity_pct;
+            view.gas_raw = sample.gas_raw;
+            view.sensor_faults = sample.sensor_faults;
+            view.fan_on = hal_relay_is_on();
         }
 
         TickType_t now = xTaskGetTickCount();
         if ((TickType_t)(now - last_button_tick) >= pdMS_TO_TICKS(BUTTON_SCAN_MS)) {
             last_button_tick = now;
-            bool changed = process_buttons(&view, &settings, now * portTICK_PERIOD_MS);
+            bool changed = process_buttons(&view, &settings, app_time_ms());
             if (changed && view.has_data &&
                 ((TickType_t)(now - last_sensor_tick) <=
-                 pdMS_TO_TICKS(SCREEN_STALE_TIMEOUT_MS))) {
-                hal_relay_set(app_fan_should_run(hal_relay_is_on(), view.gas_raw,
-                                                 view.temperature, view.sensor_faults, &settings));
+                 pdMS_TO_TICKS(SENSOR_FRESH_TIMEOUT_MS))) {
+                hal_relay_set(sensor_fan_should_run(hal_relay_is_on(), view.gas_raw,
+                                                    view.temperature_c, view.sensor_faults,
+                                                    &settings));
                 view.fan_on = hal_relay_is_on();
-                g_node2Debug.fan_state = view.fan_on ? 1U : 0U;
             }
-            g_activeThresholds = settings;
         }
 
         if (can_started) {
-            app_threshold_sync_update(&settings, xTaskGetTickCount() * portTICK_PERIOD_MS);
+            app_threshold_sync_update(&settings, app_time_ms());
         }
 
         view.stale = view.has_data &&
                      ((TickType_t)(now - last_sensor_tick) >=
-                      pdMS_TO_TICKS(SCREEN_STALE_TIMEOUT_MS));
-        g_canError = hal_can_get_error();
+                      pdMS_TO_TICKS(SENSOR_FRESH_TIMEOUT_MS));
         view.bus_error = !can_started || hal_can_bus_fault();
         if ((TickType_t)(now - last_ui_tick) >= pdMS_TO_TICKS(UI_FRAME_MS)) {
             last_ui_tick = now;
-            draw_view(&view);
-            app_ui_tick(now * portTICK_PERIOD_MS);
-            g_tftStage = hal_tft_ok() ? g_tftStage : TFT_STAGE_ERROR;
+            app_ui_update(&view);
+            app_ui_draw(app_time_ms());
         }
-        g_uiDebug = view;
-
-        g_taskLoops++;
     }
 }
 

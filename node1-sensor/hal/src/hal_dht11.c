@@ -18,10 +18,6 @@
 #define DHT11_BYTE_TEMPERATURE 2U
 #define DHT11_BYTE_CHECKSUM 4U
 
-volatile uint8_t g_dhtError = DHT11_ERR_NONE;
-volatile uint8_t g_dhtBitIndex = 0;
-volatile uint8_t g_dhtBytes[DHT11_FRAME_BYTES] = {0};
-
 static TIM_HandleTypeDef *dht11_timer = NULL;
 static GPIO_TypeDef *dht11_port = NULL;
 static uint16_t dht11_pin = 0;
@@ -88,39 +84,30 @@ static bool timer_running(void) {
 }
 
 /**
- * @brief Wait for the low/high/low sequence of the DHT11 response.
- * @return DHT11_ERR_NONE on success; otherwise the response phase that timed out.
+ * @brief Wait for the low/high/low DHT11 acknowledgement sequence.
+ * @return true if all response edges arrive within their timeouts; otherwise false.
  */
-static Dht11Error_t read_response(void) {
-    if (!wait_level(GPIO_PIN_RESET, DHT11_RESPONSE_TIMEOUT_US)) {
-        return DHT11_ERR_RESPONSE_LOW;
-    }
-    if (!wait_level(GPIO_PIN_SET, DHT11_RESPONSE_TIMEOUT_US)) {
-        return DHT11_ERR_RESPONSE_HIGH;
-    }
-    if (!wait_level(GPIO_PIN_RESET, DHT11_RESPONSE_TIMEOUT_US)) {
-        return DHT11_ERR_RESPONSE_END;
-    }
-    return DHT11_ERR_NONE;
+static bool read_response(void) {
+    return wait_level(GPIO_PIN_RESET, DHT11_RESPONSE_TIMEOUT_US) &&
+           wait_level(GPIO_PIN_SET, DHT11_RESPONSE_TIMEOUT_US) &&
+           wait_level(GPIO_PIN_RESET, DHT11_RESPONSE_TIMEOUT_US);
 }
 
 /**
- * @brief Decode all 40 DHT11 bits by measuring their high pulse widths.
- * @param[out] frame Output five-byte frame, initially zeroed by the caller; may be partially filled on failure.
- * @return DHT11_ERR_NONE on success; otherwise the bit timing error.
+ * @brief Decode the 40 DHT11 bits from their high pulse durations.
+ * @param[out] frame Five-byte frame, initially zeroed by the caller; may be partially filled on failure.
+ * @return true if all bits were captured before their timeouts; otherwise false.
  */
-static Dht11Error_t read_bits(uint8_t frame[DHT11_FRAME_BYTES]) {
+static bool read_bits(uint8_t frame[DHT11_FRAME_BYTES]) {
     for (uint8_t bit = 0; bit < DHT11_FRAME_BITS; bit++) {
-        g_dhtBitIndex = bit;
-
         if (!wait_level(GPIO_PIN_SET, DHT11_BIT_TIMEOUT_US)) {
-            return DHT11_ERR_BIT_START;
+            return false;
         }
 
         uint16_t high_start = now_us();
 
         if (!wait_level(GPIO_PIN_RESET, DHT11_BIT_TIMEOUT_US)) {
-            return DHT11_ERR_BIT_END;
+            return false;
         }
 
         uint16_t high_width_us = (uint16_t)(now_us() - high_start);
@@ -130,23 +117,18 @@ static Dht11Error_t read_bits(uint8_t frame[DHT11_FRAME_BYTES]) {
             frame[bit / DHT11_BITS_PER_BYTE] |= 1U;
         }
     }
-    return DHT11_ERR_NONE;
+    return true;
 }
 
 /**
- * @brief Release the data line, receive the DHT11 response and capture its data bits.
- * @param[out] frame Output five-byte frame initialized to zero before reception.
- * @return DHT11_ERR_NONE on success; otherwise a response or bit timing error.
+ * @brief Release the DHT11 line, receive its acknowledgement and capture its data bits.
+ * @param[out] frame Five-byte frame, initially zeroed by the caller.
+ * @return true if acknowledgement and bit capture succeed; checksum validation is performed separately.
  */
-static Dht11Error_t read_frame(uint8_t frame[DHT11_FRAME_BYTES]) {
+static bool read_frame(uint8_t frame[DHT11_FRAME_BYTES]) {
     HAL_GPIO_WritePin(dht11_port, dht11_pin, GPIO_PIN_SET);
     set_input();
-
-    Dht11Error_t error = read_response();
-    if (error != DHT11_ERR_NONE) {
-        return error;
-    }
-    return read_bits(frame);
+    return read_response() && read_bits(frame);
 }
 
 /**
@@ -155,7 +137,10 @@ static Dht11Error_t read_frame(uint8_t frame[DHT11_FRAME_BYTES]) {
  * @return true if the checksum matches; otherwise false.
  */
 static bool checksum_ok(const uint8_t frame[DHT11_FRAME_BYTES]) {
-    uint8_t sum = (uint8_t)(frame[0] + frame[1] + frame[2] + frame[3]);
+    uint8_t sum = 0U;
+    for (uint8_t i = 0U; i < DHT11_BYTE_CHECKSUM; i++) {
+        sum = (uint8_t)(sum + frame[i]);
+    }
     return sum == frame[DHT11_BYTE_CHECKSUM];
 }
 
@@ -172,7 +157,6 @@ bool hal_dht11_init(TIM_HandleTypeDef *htim, GPIO_TypeDef *port, uint16_t pin) {
     dht11_pin = pin;
 
     if ((htim == NULL) || (port == NULL) || (HAL_TIM_Base_Start(htim) != HAL_OK)) {
-        g_dhtError = DHT11_ERR_TIMER;
         return false;
     }
 
@@ -188,40 +172,24 @@ bool hal_dht11_init(TIM_HandleTypeDef *htim, GPIO_TypeDef *port, uint16_t pin) {
 bool hal_dht11_read(Dht11Reading_t *reading) {
     uint8_t frame[DHT11_FRAME_BYTES] = {0};
 
-    if (reading == NULL) {
-        g_dhtError = DHT11_ERR_ARGUMENT;
+    if ((reading == NULL) || !timer_running() || (dht11_port == NULL)) {
         return false;
-    }
-
-    if (!timer_running() || (dht11_port == NULL)) {
-        g_dhtError = DHT11_ERR_TIMER;
-        return false;
-    }
-
-    g_dhtError = DHT11_ERR_NONE;
-    g_dhtBitIndex = 0;
-    for (uint8_t i = 0; i < DHT11_FRAME_BYTES; i++) {
-        g_dhtBytes[i] = 0;
     }
 
     set_output_low();
+    /* One extra tick: vTaskDelay(n) can return after n - 1 full ticks. */
     vTaskDelay(pdMS_TO_TICKS(DHT11_START_LOW_MS) + 1U);
 
+    /*
+     * The 40-bit frame is timed in microseconds and takes 4-5 ms. Suspend the scheduler
+     * instead of masking interrupts so SysTick keeps counting; a task switch inside the
+     * frame would break the bit timing.
+     */
     vTaskSuspendAll();
-    Dht11Error_t error = read_frame(frame);
+    bool received = read_frame(frame);
     (void)xTaskResumeAll();
 
-    for (uint8_t i = 0; i < DHT11_FRAME_BYTES; i++) {
-        g_dhtBytes[i] = frame[i];
-    }
-
-    if (error != DHT11_ERR_NONE) {
-        g_dhtError = error;
-        return false;
-    }
-
-    if (!checksum_ok(frame)) {
-        g_dhtError = DHT11_ERR_CHECKSUM;
+    if (!received || !checksum_ok(frame)) {
         return false;
     }
 

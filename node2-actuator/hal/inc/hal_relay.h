@@ -11,10 +11,6 @@
 
 #include "stm32f1xx_hal.h"
 
-extern volatile uint32_t g_relayState;
-extern volatile uint32_t g_relayPinLevel;
-extern volatile uint32_t g_relaySwitchCount;
-
 /**
  * @brief Bind the relay GPIO and initialize it to the off state.
  * @param[in] port Relay GPIO port.
@@ -23,7 +19,7 @@ extern volatile uint32_t g_relaySwitchCount;
  */
 void hal_relay_init(GPIO_TypeDef *port, uint16_t pin, GPIO_PinState on_level);
 /**
- * @brief Drive the relay output and update state and transition diagnostics.
+ * @brief Drive the relay output and retain the commanded state.
  * @param[in] on true to energize the relay; false to turn it off.
  */
 void hal_relay_set(bool on);

@@ -11,19 +11,13 @@
 
 #include "stm32f1xx_hal.h"
 
-extern volatile uint32_t g_uartTxStatus;
-extern volatile uint32_t g_uartError;
-extern volatile uint32_t g_uartRxCount;
-extern volatile uint32_t g_uartOverrunCount;
-extern volatile uint32_t g_uartRxDropCount;
-
 /**
  * @brief Bind the modem UART, clear the receive ring and enable receive-not-empty interrupts.
  * @param[in] huart Initialized UART handle connected to the A7680C modem.
  */
 void hal_a7680c_init(UART_HandleTypeDef *huart);
 /**
- * @brief Transmit a modem command through the bound UART and record HAL diagnostics.
+ * @brief Transmit a modem command synchronously through the bound UART.
  * @param[in] text Null-terminated command bytes, including any required CR/LF terminator.
  * @return true if the blocking HAL UART transmission succeeds; otherwise false.
  */
@@ -44,7 +38,7 @@ void hal_a7680c_drain(void);
  */
 bool hal_a7680c_is_ready(void);
 /**
- * @brief Read UART receive/error flags, buffer incoming bytes and count overruns or ring drops.
+ * @brief Read UART receive/error flags and buffer incoming bytes, dropping bytes when the ring is full.
  */
 void hal_a7680c_irq_handler(void);
 

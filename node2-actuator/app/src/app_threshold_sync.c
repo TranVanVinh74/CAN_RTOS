@@ -11,9 +11,6 @@
 #include "can_protocol.h"
 #include "hal_can.h"
 
-volatile uint32_t g_thresholdTxQueuedCount = 0U;
-volatile uint32_t g_thresholdTxFailCount = 0U;
-
 static AlertThresholds_t last_sent;
 static uint32_t last_sent_ms;
 static uint32_t last_attempt_ms;
@@ -28,6 +25,10 @@ void app_threshold_sync_init(void) {
     attempted = false;
 }
 
+/*
+ * Resend every THRESHOLD_SYNC_INTERVAL_MS so Node3 recovers the thresholds after its own
+ * reset; a full TX mailbox is retried after THRESHOLD_SYNC_RETRY_MS.
+ */
 /**
  * @brief Publish changed thresholds or a one-second refresh, spacing failed attempts by at least 100 ms.
  * @param[in] thresholds Input gas and temperature activation thresholds; must be valid for policy evaluation.
@@ -53,8 +54,5 @@ void app_threshold_sync_update(const AlertThresholds_t *thresholds, uint32_t now
         last_sent_ms = now_ms;
         sent = true;
         attempted = false;
-        g_thresholdTxQueuedCount++;
-    } else {
-        g_thresholdTxFailCount++;
     }
 }

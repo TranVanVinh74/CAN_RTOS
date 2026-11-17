@@ -7,17 +7,10 @@
 
 #include <stddef.h>
 
-#define CAN_ERROR_PASSIVE_COUNT 128U
-#define CAN_ESR_COUNTER_MASK 0xFFU
-#define CAN_ESR_TX_COUNTER_SHIFT 16U
-#define CAN_ESR_RX_COUNTER_SHIFT 24U
-
 #define CAN_FILTER_BANK 0U
 #define CAN_SLAVE_START_FILTER_BANK 14U
+#define CAN_FILTER_MATCH_ANY 0x0000U
 #define CAN_STANDARD_ID_MAX 0x7FFU
-
-volatile uint32_t g_canError = 0;
-volatile uint32_t g_canReadErrorCount = 0;
 
 static CAN_HandleTypeDef *can_handle = NULL;
 static CanRxHandler_t can_rx_handler = NULL;
@@ -32,10 +25,10 @@ static HAL_StatusTypeDef config_accept_all_filter(void) {
     filter.FilterBank = CAN_FILTER_BANK;
     filter.FilterMode = CAN_FILTERMODE_IDMASK;
     filter.FilterScale = CAN_FILTERSCALE_32BIT;
-    filter.FilterIdHigh = 0x0000U;
-    filter.FilterIdLow = 0x0000U;
-    filter.FilterMaskIdHigh = 0x0000U;
-    filter.FilterMaskIdLow = 0x0000U;
+    filter.FilterIdHigh = CAN_FILTER_MATCH_ANY;
+    filter.FilterIdLow = CAN_FILTER_MATCH_ANY;
+    filter.FilterMaskIdHigh = CAN_FILTER_MATCH_ANY;
+    filter.FilterMaskIdLow = CAN_FILTER_MATCH_ANY;
     filter.FilterFIFOAssignment = CAN_RX_FIFO0;
     filter.FilterActivation = ENABLE;
     filter.SlaveStartFilterBank = CAN_SLAVE_START_FILTER_BANK;
@@ -43,8 +36,8 @@ static HAL_StatusTypeDef config_accept_all_filter(void) {
 }
 
 /**
- * @brief Bind the driver to the CAN peripheral handle.
- * @param[in] hcan CAN peripheral handle initialized by CubeMX; must remain valid while the driver is used.
+ * @brief Bind a CAN handle without starting the peripheral.
+ * @param[in] hcan Initialized CAN handle; call hal_can_start after application queues and callbacks are ready.
  */
 void hal_can_init(CAN_HandleTypeDef *hcan) {
     can_handle = hcan;
@@ -59,8 +52,8 @@ void hal_can_set_rx_handler(CanRxHandler_t rx_handler) {
 }
 
 /**
- * @brief Configure the receive filter, start CAN and enable the FIFO0 message-pending interrupt.
- * @return CAN_ERR_NONE on success; otherwise the failing initialization stage.
+ * @brief Configure CAN reception, start the peripheral and enable the FIFO0 pending interrupt.
+ * @return CAN_ERR_NONE on success; otherwise the failed initialization stage.
  */
 CanError_t hal_can_start(void) {
     if (can_handle == NULL) {
@@ -68,44 +61,28 @@ CanError_t hal_can_start(void) {
     }
 
     if (config_accept_all_filter() != HAL_OK) {
-        g_canError = HAL_CAN_GetError(can_handle);
         return CAN_ERR_FILTER;
     }
 
     if (HAL_CAN_Start(can_handle) != HAL_OK) {
-        g_canError = HAL_CAN_GetError(can_handle);
         return CAN_ERR_START;
     }
 
     if (HAL_CAN_ActivateNotification(can_handle, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK) {
-        g_canError = HAL_CAN_GetError(can_handle);
         return CAN_ERR_NOTIFICATION;
     }
 
     return CAN_ERR_NONE;
 }
 
-/**
- * @brief Read the HAL CAN error flags.
- * @return HAL CAN error bitmask, or zero when no handle is bound.
- */
-uint32_t hal_can_get_error(void) {
-    return (can_handle != NULL) ? HAL_CAN_GetError(can_handle) : 0U;
-}
-
+/* EPVF is set once TEC or REC exceeds 127 (error passive); BOFF means bus-off. */
 /**
  * @brief Check CAN bus-off, error-passive state and transmit/receive error counters.
  * @return true if CAN is unavailable or in a bus fault state; otherwise false.
  */
 bool hal_can_bus_fault(void) {
-    if (can_handle == NULL) {
-        return true;
-    }
-    uint32_t status = can_handle->Instance->ESR;
-    uint32_t tx_errors = (status >> CAN_ESR_TX_COUNTER_SHIFT) & CAN_ESR_COUNTER_MASK;
-    uint32_t rx_errors = (status >> CAN_ESR_RX_COUNTER_SHIFT) & CAN_ESR_COUNTER_MASK;
-    return (status & (CAN_ESR_BOFF | CAN_ESR_EPVF)) != 0U ||
-           tx_errors >= CAN_ERROR_PASSIVE_COUNT || rx_errors >= CAN_ERROR_PASSIVE_COUNT;
+    return (can_handle == NULL) ||
+           ((can_handle->Instance->ESR & (CAN_ESR_BOFF | CAN_ESR_EPVF)) != 0U);
 }
 
 /**
@@ -146,7 +123,6 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
         CanRxFrame_t frame;
 
         if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &header, frame.data) != HAL_OK) {
-            g_canReadErrorCount++;
             break;
         }
 

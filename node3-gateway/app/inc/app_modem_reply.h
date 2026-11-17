@@ -18,6 +18,6 @@ typedef enum {
  * @param[in] reply Null-terminated modem response text, or NULL.
  * @return Detected ModemReply_t category, or MODEM_REPLY_NONE for no recognized marker or NULL input.
  */
-ModemReply_t app_modem_classify_reply(const char *reply);
+ModemReply_t app_modem_reply_classify(const char *reply);
 
 #endif

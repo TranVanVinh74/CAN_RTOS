@@ -13,14 +13,13 @@
 #include "queue.h"
 
 typedef struct {
-    uint8_t fan_state;
-    uint8_t temperature;
-    uint8_t humidity;
+    uint8_t temperature_c;
+    uint8_t humidity_pct;
     uint16_t gas_raw;
     uint8_t sensor_faults;
-} ActuatorCommand_t;
+} SensorData_t;
 
-extern QueueHandle_t xActuatorQueue;
+extern QueueHandle_t xSensorQueue;
 
 /**
  * @brief Create the FreeRTOS queues used to exchange application data.

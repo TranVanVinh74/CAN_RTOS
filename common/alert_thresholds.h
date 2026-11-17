@@ -40,6 +40,11 @@ static inline bool alert_thresholds_valid(const AlertThresholds_t *thresholds) {
            (thresholds->temperature_limit_c <= ALERT_TEMPERATURE_MAX_C);
 }
 
+/*
+ * Hysteresis: switch on strictly above a limit, switch off only when both readings are
+ * below their limit minus the hysteresis, otherwise keep the previous state. Readings
+ * that hover around a limit must not toggle the fan or start a new call every frame.
+ */
 /**
  * @brief Apply OR activation and AND deactivation with gas and temperature hysteresis.
  * @param[in] running Previous active state used by hysteresis.

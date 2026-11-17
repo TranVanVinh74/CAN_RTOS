@@ -13,10 +13,10 @@
 #define TFT_HEIGHT 160U
 
 /**
- * @brief Fill one row of a rectangle requested by the TFT driver.
+ * @brief Fill a row of the rectangle requested by the TFT driver.
  * @param[in] row Zero-based row index relative to the requested rectangle.
  * @param[out] pixels Buffer to fill with the rectangle width in RGB565 pixels.
- * @note Called synchronously during drawing; the buffer must not be retained.
+ * @note The callback runs synchronously; do not retain the row buffer.
  */
 typedef void (*TftRowPainter_t)(uint8_t row, uint16_t *pixels);
 

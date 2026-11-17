@@ -37,6 +37,7 @@ static inline bool sensor_above_limit(uint16_t gas_raw, uint8_t temperature_c,
             (temperature_c > thresholds->temperature_limit_c));
 }
 
+/* With a sensor fault the fan never switches off: a missing reading cannot prove safety. */
 /**
  * @brief Apply fan hysteresis and retain an active fan while sensor faults prevent safe deactivation.
  * @param[in] running Previous active state used by hysteresis.
@@ -55,14 +56,21 @@ static inline bool sensor_fan_should_run(bool running, uint16_t gas_raw,
     return running || sensor_above_limit(gas_raw, temperature_c, faults, thresholds);
 }
 
+/*
+ * With a sensor fault only the valid channels count. A valid reading above its limit
+ * raises the call alarm. A running alarm keeps the hysteresis on the valid channels: it
+ * stops only when every valid reading is below its switch-off level, so a single faulty
+ * frame or a reading just under the limit does not hang up a call. A faulty channel never
+ * holds the alarm on, so two faulty channels stop it: held readings cannot keep a call.
+ */
 /**
- * @brief Apply alarm hysteresis; during sensor faults require a valid channel above its activation limit.
- * @param[in] running Previous active state used by hysteresis.
- * @param[in] gas_raw Raw MQ5 ADC reading, before any ppm conversion.
+ * @brief Apply alarm hysteresis to valid channels; faulty channels cannot hold an alarm active.
+ * @param[in] running Previous alarm state.
+ * @param[in] gas_raw Raw gas ADC reading.
  * @param[in] temperature_c Temperature in whole degrees Celsius.
- * @param[in] faults Sensor fault bitmask: bit 0 for GAS and bit 1 for DHT.
- * @param[in] thresholds Input gas and temperature activation thresholds; must be valid for policy evaluation.
- * @return Next alarm state; faulty channels cannot trigger an alarm from retained readings.
+ * @param[in] faults Sensor fault bitmask: GAS bit 0 and DHT bit 1.
+ * @param[in] thresholds Non-NULL pointer to valid gas and temperature activation thresholds.
+ * @return Next alarm state; with faults, clear only when all valid channels are below their off thresholds, or when both channels are faulty.
  */
 static inline bool sensor_alarm_should_run(bool running, uint16_t gas_raw,
                                           uint8_t temperature_c, uint8_t faults,
@@ -70,7 +78,15 @@ static inline bool sensor_alarm_should_run(bool running, uint16_t gas_raw,
     if (faults == 0U) {
         return alert_should_run(running, gas_raw, temperature_c, thresholds);
     }
-    return sensor_above_limit(gas_raw, temperature_c, faults, thresholds);
+    if (sensor_above_limit(gas_raw, temperature_c, faults, thresholds)) {
+        return true;
+    }
+    bool gas_below_off = ((faults & SENSOR_FAULT_GAS) != 0U) ||
+                         (gas_raw < thresholds->gas_limit_raw - ALERT_GAS_HYSTERESIS_RAW);
+    bool temperature_below_off =
+        ((faults & SENSOR_FAULT_DHT) != 0U) ||
+        (temperature_c < thresholds->temperature_limit_c - ALERT_TEMPERATURE_HYSTERESIS_C);
+    return running && !(gas_below_off && temperature_below_off);
 }
 
 #endif

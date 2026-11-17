@@ -13,7 +13,6 @@
 /* USER CODE BEGIN Includes */
 #include "app_ipc.h"
 #include "bsp_board.h"
-#include "hal_can.h"
 #include "task_actuator.h"
 /* USER CODE END Includes */
 
@@ -44,20 +43,24 @@ osThreadId defaultTaskHandle;
 
 /* Private function prototypes -----------------------------------------------*/
 /**
- * @brief Configure the HSE/PLL system clock and peripheral bus dividers.
- */
+  * @brief Configure the HSE/PLL system clock and peripheral bus dividers.
+  * @retval None
+  */
 void SystemClock_Config(void);
 /**
- * @brief Initialize board pin modes and initial output levels.
- */
+  * @brief Initialize board pin modes and initial output levels.
+  * @retval None
+  */
 static void MX_GPIO_Init(void);
 /**
- * @brief Initialize the TFT SPI master interface.
- */
+  * @brief Initialize the TFT SPI master interface.
+  * @retval None
+  */
 static void MX_SPI1_Init(void);
 /**
- * @brief Initialize CAN1 standard bus timing at 500 kbit/s.
- */
+  * @brief Initialize CAN1 standard bus timing at 500 kbit/s.
+  * @retval None
+  */
 static void MX_CAN_Init(void);
 /**
  * @brief Delete the CubeMX default task after application tasks have been created.
@@ -75,7 +78,7 @@ void StartDefaultTask(void const * argument);
 /* USER CODE END 0 */
 
 /**
-  * @brief Initialize peripherals, bind drivers, create queues and tasks, then start the FreeRTOS scheduler.
+  * @brief  The application entry point.
   * @retval int
   */
 int main(void)
@@ -153,7 +156,7 @@ int main(void)
 }
 
 /**
-  * @brief Configure the HSE/PLL system clock and peripheral bus dividers.
+  * @brief System Clock Configuration
   * @retval None
   */
 void SystemClock_Config(void)
@@ -192,7 +195,7 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief Initialize CAN1 standard bus timing at 500 kbit/s.
+  * @brief CAN Initialization Function
   * @param None
   * @retval None
   */
@@ -229,7 +232,7 @@ static void MX_CAN_Init(void)
 }
 
 /**
-  * @brief Initialize the TFT SPI master interface.
+  * @brief SPI1 Initialization Function
   * @param None
   * @retval None
   */
@@ -267,7 +270,7 @@ static void MX_SPI1_Init(void)
 }
 
 /**
-  * @brief Initialize board pin modes and initial output levels.
+  * @brief GPIO Initialization Function
   * @param None
   * @retval None
   */
@@ -333,7 +336,7 @@ void StartDefaultTask(void const * argument)
 }
 
 /**
-  * @brief Increment the HAL millisecond tick when the TIM4 time base expires.
+  * @brief  Period elapsed callback in non blocking mode
   * @note   This function is called  when TIM4 interrupt took place, inside
   * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
   * a global variable "uwTick" used as application time base.
@@ -355,13 +358,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 }
 
 /**
-  * @brief Disable interrupts and stop execution after an unrecoverable error.
+  * @brief  This function is executed in case of error occurrence.
   * @retval None
   */
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-    g_canError = HAL_CAN_GetError(&hcan);
     bsp_board_record_error();
 
     __disable_irq();
@@ -372,7 +374,7 @@ void Error_Handler(void)
 
 #ifdef  USE_FULL_ASSERT
 /**
-  * @brief Provide the optional full-assert callback; this implementation leaves reporting to the user.
+  * @brief  Reports the name of the source file and the source line number
   *         where the assert_param error has occurred.
   * @param  file: pointer to the source file name
   * @param  line: assert_param error line source number

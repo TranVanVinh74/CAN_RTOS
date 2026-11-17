@@ -19,10 +19,6 @@ typedef struct {
     uint16_t rst_pin;
 } TftPins_t;
 
-extern volatile uint32_t g_tftSPIErrors;
-extern volatile uint32_t g_tftSPIStatus;
-extern volatile uint32_t g_tftSPIHalError;
-
 /**
  * @brief Bind TFT control pins and SPI, reset the panel and configure ST7735 RGB565 mode.
  * @param[in] hspi Initialized SPI handle connected to the display.

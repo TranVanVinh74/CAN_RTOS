@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <string.h>
 
+static const char *const error_marker = "ERROR";
 static const char *const reset_markers[] = {"+CPIN: READY", "*ATREADY", "\nRDY\r"};
 static const char *const call_end_markers[] = {"NO CARRIER", "BUSY", "NO ANSWER", "NO DIALTONE",
                                                "VOICE CALL: END"};
@@ -34,7 +35,7 @@ static bool contains_any(const char *reply, const char *const *markers, size_t c
  * @param[in] reply Null-terminated modem response text, or NULL.
  * @return Detected ModemReply_t category, or MODEM_REPLY_NONE for no recognized marker or NULL input.
  */
-ModemReply_t app_modem_classify_reply(const char *reply) {
+ModemReply_t app_modem_reply_classify(const char *reply) {
     if (reply == NULL) {
         return MODEM_REPLY_NONE;
     }
@@ -45,7 +46,7 @@ ModemReply_t app_modem_classify_reply(const char *reply) {
                      sizeof(call_end_markers) / sizeof(call_end_markers[0]))) {
         return MODEM_REPLY_CALL_ENDED;
     }
-    if (strstr(reply, "ERROR") != NULL) {
+    if (strstr(reply, error_marker) != NULL) {
         return MODEM_REPLY_ERROR;
     }
     return MODEM_REPLY_NONE;

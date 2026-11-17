@@ -14,63 +14,70 @@
 #include "app_call.h"
 #include "app_cfg.h"
 #include "app_ipc.h"
-#include "alert_thresholds.h"
+#include "app_time.h"
 #include "bsp_board.h"
 #include "can_protocol.h"
-#include "sensor_status.h"
-#include "hal_a7680c.h"
 #include "hal_can.h"
-
-#define CAN_STAGE_STARTING 1U
-#define CAN_STAGE_RUNNING 2U
-
-volatile SensorData_t g_node3Debug = {0};
-volatile uint32_t g_canStage = 0;
-volatile uint32_t g_canRxCount = 0;
-volatile uint32_t g_canProcessedCount = 0;
-volatile uint32_t g_canInvalidCount = 0;
-volatile uint32_t g_canQueueErrorCount = 0;
-volatile uint32_t g_sensorSeen = 0;
-volatile uint32_t g_sensorFresh = 0;
-volatile uint32_t g_sensorAgeMs = 0;
-volatile uint32_t g_alarmActive = 0;
-volatile uint32_t g_thresholdRxCount = 0;
-volatile uint32_t g_thresholdProcessedCount = 0;
-volatile uint32_t g_thresholdInvalidCount = 0;
-volatile uint32_t g_thresholdSeen = 0;
-volatile AlertThresholds_t g_activeThresholds = {
-    .gas_limit_raw = ALERT_GAS_DEFAULT_RAW,
-    .temperature_limit_c = ALERT_TEMPERATURE_DEFAULT_C,
-};
-volatile uint32_t g_taskLoops = 0;
-volatile uint32_t g_atFailCount = 0;
+#include "sensor_status.h"
 
 static TaskHandle_t xCommTaskHandle = NULL;
 
 static SensorData_t latest_sensor = {0};
-static bool sensor_seen = false;
+static bool has_sample = false;
+static bool sensor_fresh = false;
 static bool alarm_active = false;
 static AlertThresholds_t active_thresholds = {
     .gas_limit_raw = ALERT_GAS_DEFAULT_RAW,
     .temperature_limit_c = ALERT_TEMPERATURE_DEFAULT_C,
 };
+static uint32_t modem_wait_start_ms = 0;
+static uint32_t last_at_check_ms = 0;
+static uint32_t last_idle_check_ms = 0;
+static bool at_checked = false;
 
 /**
- * @brief Convert the FreeRTOS tick count into milliseconds.
- * @return Current scheduler time in milliseconds, with unsigned wraparound.
+ * @brief Match standard CAN data frames by identifier and payload length.
+ * @param[in] frame Non-NULL input CAN frame.
+ * @param[in] std_id Expected standard CAN identifier.
+ * @param[in] dlc Expected payload length in bytes.
+ * @return true if IDE, RTR, identifier and DLC match; otherwise false.
  */
-static uint32_t now_ms(void) {
-    return (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+static bool is_data_frame(const CanRxFrame_t *frame, uint32_t std_id, uint8_t dlc) {
+    return !frame->is_extended && !frame->is_remote && (frame->std_id == std_id) &&
+           (frame->dlc == dlc);
 }
 
 /**
- * @brief Check that a frame is a standard sensor data frame with the expected identifier and DLC.
- * @param[in] frame Input received CAN frame metadata.
- * @return true if the frame metadata matches the sensor protocol.
+ * @brief Decode and range-check threshold data before overwriting the ISR threshold queue.
+ * @param[in] frame Input frame whose metadata was validated by on_can_frame.
+ * @param[in,out] task_woken Shared FreeRTOS ISR wake flag.
  */
-static bool is_sensor_frame(const CanRxFrame_t *frame) {
-    return !frame->is_extended && !frame->is_remote && (frame->std_id == CAN_ID_SENSOR) &&
-           (frame->dlc == CAN_DLC_SENSOR);
+static void on_threshold_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
+    AlertThresholds_t thresholds;
+
+    can_unpack_thresholds(frame->data, &thresholds.gas_limit_raw,
+                          &thresholds.temperature_limit_c);
+    if (alert_thresholds_valid(&thresholds)) {
+        (void)xQueueOverwriteFromISR(xThresholdQueue, &thresholds, task_woken);
+    }
+}
+
+/**
+ * @brief Validate sensor faults, timestamp arrival and overwrite the latest-sample queue from the ISR.
+ * @param[in] frame Input frame whose metadata was validated by on_can_frame.
+ * @param[in,out] task_woken Shared FreeRTOS ISR wake flag.
+ */
+static void on_sensor_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
+    SensorData_t sample = {0};
+
+    can_unpack_sensor(frame->data, &sample.temperature_c, &sample.humidity_pct, &sample.gas_raw,
+                      &sample.sensor_faults);
+    if (!sensor_faults_valid(sample.sensor_faults)) {
+        return;
+    }
+    /* Stamped on arrival so freshness does not depend on when the task reads the queue. */
+    sample.received_ms = app_time_ms_from_isr();
+    (void)xQueueOverwriteFromISR(xSensorQueue, &sample, task_woken);
 }
 
 /**
@@ -79,45 +86,10 @@ static bool is_sensor_frame(const CanRxFrame_t *frame) {
  * @param[in,out] task_woken Input/output FreeRTOS wake flag shared by ISR queue operations.
  */
 static void on_can_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
-    SensorData_t sample = {0};
-
-    if (frame->std_id == CAN_ID_THRESHOLDS) {
-        AlertThresholds_t thresholds;
-        if (frame->is_extended || frame->is_remote || (frame->dlc != CAN_DLC_THRESHOLDS)) {
-            g_thresholdInvalidCount++;
-            g_canInvalidCount++;
-            return;
-        }
-        can_unpack_thresholds(frame->data, &thresholds.gas_limit_raw,
-                              &thresholds.temperature_limit_c);
-        if (!alert_thresholds_valid(&thresholds)) {
-            g_thresholdInvalidCount++;
-            g_canInvalidCount++;
-            return;
-        }
-        g_thresholdRxCount++;
-        if (xQueueOverwriteFromISR(xThresholdQueue, &thresholds, task_woken) != pdPASS) {
-            g_canQueueErrorCount++;
-        }
-        return;
-    }
-
-    if (!is_sensor_frame(frame)) {
-        g_canInvalidCount++;
-        return;
-    }
-
-    can_unpack_sensor(frame->data, &sample.temperature, &sample.humidity, &sample.gas_raw,
-                      &sample.sensor_faults);
-    if (!sensor_faults_valid(sample.sensor_faults)) {
-        g_canInvalidCount++;
-        return;
-    }
-    sample.received_ms = (uint32_t)(xTaskGetTickCountFromISR() * portTICK_PERIOD_MS);
-    g_canRxCount++;
-
-    if (xQueueOverwriteFromISR(xSensorQueue, &sample, task_woken) != pdPASS) {
-        g_canQueueErrorCount++;
+    if (is_data_frame(frame, CAN_ID_THRESHOLDS, CAN_DLC_THRESHOLDS)) {
+        on_threshold_frame(frame, task_woken);
+    } else if (is_data_frame(frame, CAN_ID_SENSOR, CAN_DLC_SENSOR)) {
+        on_sensor_frame(frame, task_woken);
     }
 }
 
@@ -125,98 +97,42 @@ static void on_can_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
  * @brief Start CAN reception or enter the non-returning board failure handler on error.
  */
 static void start_can(void) {
-    static const BoardError_t board_error[] = {
-        [CAN_ERR_NONE] = BOARD_ERR_NONE,
-        [CAN_ERR_NO_HANDLE] = BOARD_ERR_CAN_START,
-        [CAN_ERR_FILTER] = BOARD_ERR_CAN_FILTER,
-        [CAN_ERR_START] = BOARD_ERR_CAN_START,
-        [CAN_ERR_NOTIFICATION] = BOARD_ERR_CAN_NOTIFICATION,
-    };
-
-    g_canStage = CAN_STAGE_STARTING;
-
     CanError_t error = hal_can_start();
     if (error != CAN_ERR_NONE) {
-        bsp_board_fail(board_error[error]);
+        bsp_board_fail(bsp_board_can_error(error));
     }
-
-    g_canStage = CAN_STAGE_RUNNING;
 }
 
 /**
- * @brief Recompute the alarm state from the latest readings, sensor faults and active thresholds.
+ * @brief Consume the latest CAN data, expire stale samples and recompute the alarm using valid channels.
  */
-static void update_alarm(void) {
-    alarm_active = sensor_alarm_should_run(alarm_active, latest_sensor.gas_raw,
-                                           latest_sensor.temperature, latest_sensor.sensor_faults,
-                                           &active_thresholds);
-}
-
-/**
- * @brief Consume the latest thresholds and readings, update sample age and gate the alarm on freshness.
- */
-static void sensor_update(void) {
+static void update_sensor_state(void) {
     SensorData_t sample;
     AlertThresholds_t thresholds;
 
     if (xQueueReceive(xThresholdQueue, &thresholds, 0U) == pdPASS) {
         active_thresholds = thresholds;
-        g_activeThresholds = thresholds;
-        g_thresholdProcessedCount++;
-        g_thresholdSeen = 1U;
     }
 
-    if (xQueueReceive(xSensorQueue, &sample, 0) == pdPASS) {
+    if (xQueueReceive(xSensorQueue, &sample, 0U) == pdPASS) {
         latest_sensor = sample;
-        sensor_seen = true;
-        g_node3Debug = sample;
-        g_canProcessedCount++;
+        has_sample = true;
     }
 
-    g_sensorSeen = sensor_seen ? 1U : 0U;
-
-    if (!sensor_seen) {
-        g_sensorFresh = 0;
-        g_sensorAgeMs = 0;
-        g_alarmActive = 0;
+    sensor_fresh = has_sample &&
+                   ((app_time_ms() - latest_sensor.received_ms) <= SENSOR_FRESH_TIMEOUT_MS);
+    /*
+     * Drop a stale sample: after about 49.7 days without data the millisecond counter
+     * wraps and the old sample would look fresh again.
+     */
+    if (!sensor_fresh) {
+        has_sample = false;
         return;
     }
 
-    g_sensorAgeMs = now_ms() - latest_sensor.received_ms;
-    g_sensorFresh = (g_sensorAgeMs <= SENSOR_FRESH_TIMEOUT_MS) ? 1U : 0U;
-
-    if (g_sensorFresh != 0U) {
-        update_alarm();
-    }
-
-    g_alarmActive = ((g_sensorFresh != 0U) && alarm_active) ? 1U : 0U;
-}
-
-/**
- * @brief Probe the modem with AT when the retry interval permits and update readiness diagnostics.
- * @param[in] now Current scheduler time in milliseconds.
- * @param[in,out] last_check_ms Input/output timestamp of the most recent probe attempt.
- * @param[in,out] checked Input/output flag indicating that at least one probe has been attempted.
- * @return true if a probe was attempted; false if the retry interval has not elapsed.
- */
-static bool check_modem(uint32_t now, uint32_t *last_check_ms, bool *checked) {
-    if (*checked && ((now - *last_check_ms) < MODEM_AT_RETRY_MS)) {
-        return false;
-    }
-
-    *checked = true;
-    *last_check_ms = now;
-    g_callStage = CALL_STAGE_AT_CHECK;
-
-    hal_a7680c_drain();
-
-    if (hal_a7680c_is_ready()) {
-        g_atOK = 1;
-        g_callStage = CALL_STAGE_READY;
-    } else {
-        g_atFailCount++;
-    }
-    return true;
+    alarm_active = sensor_alarm_should_run(alarm_active, latest_sensor.gas_raw,
+                                           latest_sensor.temperature_c,
+                                           latest_sensor.sensor_faults, &active_thresholds);
 }
 
 /**
@@ -224,88 +140,86 @@ static bool check_modem(uint32_t now, uint32_t *last_check_ms, bool *checked) {
  * @return true if current alarm data permits an automatic call.
  */
 static bool alarm_wants_call(void) {
-    return (g_sensorFresh != 0U) && alarm_active;
+    return sensor_fresh && alarm_active;
 }
 
 /**
- * @brief Consume CAN data and service modem readiness, alarm calls and call cooldowns.
+ * @brief Restart the modem boot-wait timer and clear AT-probe scheduling state.
+ */
+static void restart_modem_wait(void) {
+    modem_wait_start_ms = app_time_ms();
+    at_checked = false;
+}
+
+/**
+ * @brief Probe the modem, update probe timestamps and refresh sensor state after the blocking check.
+ */
+static void check_modem(void) {
+    at_checked = true;
+    last_at_check_ms = app_time_ms();
+    (void)app_call_check_modem();
+    last_idle_check_ms = app_time_ms();
+    update_sensor_state();
+}
+
+/**
+ * @brief Consume CAN data and service modem readiness, automatic alarm calls and call cooldowns.
  * @param[in] pvParameters Unused task argument; task creation passes NULL.
  */
 static void prvCommTask(void *pvParameters) {
     (void)pvParameters;
 
-    uint32_t last_at_check_ms = 0;
-    uint32_t last_idle_check_ms = 0;
-    bool at_checked = false;
-    bool automatic_call = false;
-
     start_can();
-
-    g_callStage = CALL_STAGE_MODEM_BOOT;
-    uint32_t modem_wait_start = now_ms();
+    app_call_init();
+    restart_modem_wait();
 
     for (;;) {
-        sensor_update();
-        g_taskLoops++;
-        g_canError = hal_can_get_error();
-
-        uint32_t now = now_ms();
-        app_call_update_cooldown(now);
+        update_sensor_state();
+        uint32_t now = app_time_ms();
 
         if (app_call_is_active()) {
-            if (automatic_call && !alarm_wants_call()) {
-                g_hangupRequest = 1U;
+            if (!alarm_wants_call()) {
+                app_call_request_hangup();
             }
             app_call_poll_modem();
             app_call_service();
-            if (!app_call_is_active()) {
-                automatic_call = false;
-            }
-            if (g_callStage == CALL_STAGE_MODEM_RESET) {
-                modem_wait_start = now_ms();
-                at_checked = false;
+            if (app_call_stage() == CALL_STAGE_MODEM_RESET) {
+                restart_modem_wait();
             }
             vTaskDelay(pdMS_TO_TICKS(TASK_COMM_IDLE_DELAY_MS));
             continue;
         }
 
-        if ((now - modem_wait_start) < MODEM_BOOT_WAIT_MS) {
+        if ((now - modem_wait_start_ms) < MODEM_BOOT_WAIT_MS) {
             vTaskDelay(pdMS_TO_TICKS(TASK_COMM_WAIT_DELAY_MS));
             continue;
         }
 
-        if (g_atOK == 0U) {
-            if (check_modem(now, &last_at_check_ms, &at_checked)) {
-                last_idle_check_ms = now_ms();
-                sensor_update();
+        if (!app_call_modem_ready()) {
+            if (!at_checked || ((now - last_at_check_ms) >= MODEM_AT_RETRY_MS)) {
+                check_modem();
             }
             vTaskDelay(pdMS_TO_TICKS(TASK_COMM_WAIT_DELAY_MS));
             continue;
         }
 
         app_call_poll_modem();
-        if (g_atOK == 0U) {
-            modem_wait_start = now_ms();
-            at_checked = false;
+        if (!app_call_modem_ready()) {
+            restart_modem_wait();
             vTaskDelay(pdMS_TO_TICKS(TASK_COMM_WAIT_DELAY_MS));
             continue;
         }
 
-        sensor_update();
+        update_sensor_state();
 
-        if (!alarm_wants_call() && (g_callRequest == 0U) &&
-            ((now_ms() - last_idle_check_ms) >= MODEM_IDLE_CHECK_MS)) {
-            g_atOK = 0;
-            at_checked = false;
-            check_modem(now_ms(), &last_at_check_ms, &at_checked);
-            last_idle_check_ms = now_ms();
-            sensor_update();
+        /* An idle modem can reboot without notice; re-check it before an alarm needs it. */
+        if (!alarm_wants_call() &&
+            ((app_time_ms() - last_idle_check_ms) >= MODEM_IDLE_CHECK_MS)) {
+            check_modem();
         }
 
-        bool manual_request = (g_callRequest == 1U);
-        if ((g_atOK != 0U) && (alarm_wants_call() || manual_request) &&
-            app_call_cooldown_over(now_ms())) {
-            automatic_call = !manual_request;
+        if (app_call_modem_ready() && alarm_wants_call() &&
+            app_call_cooldown_over(app_time_ms())) {
             app_call_start(APP_ALERT_PHONE);
         }
 

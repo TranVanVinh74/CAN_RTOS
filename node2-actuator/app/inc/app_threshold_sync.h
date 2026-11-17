@@ -10,9 +10,6 @@
 
 #include "alert_thresholds.h"
 
-extern volatile uint32_t g_thresholdTxQueuedCount;
-extern volatile uint32_t g_thresholdTxFailCount;
-
 /**
  * @brief Reset transmission tracking so the next update sends the active thresholds.
  */

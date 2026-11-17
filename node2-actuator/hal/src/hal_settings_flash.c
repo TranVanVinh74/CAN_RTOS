@@ -68,6 +68,10 @@ bool hal_settings_flash_write(const uint16_t *data, size_t words) {
     uint32_t page_error = UINT32_MAX;
     bool ok = HAL_FLASHEx_Erase(&erase, &page_error) == HAL_OK;
 
+    /*
+     * The first words hold the record magic and are programmed last. A reset during
+     * erase or programming leaves them erased, so the record is rejected at boot.
+     */
     for (size_t i = SETTINGS_COMMIT_WORDS; ok && (i < words); i++) {
         ok = HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,
                               (uint32_t)(uintptr_t)&__settings_start__[i], data[i]) == HAL_OK;
