@@ -1,3 +1,8 @@
+/**
+ * @file FreeRTOSConfig.h
+ * @brief FreeRTOS scheduling, memory, interrupt priorities and diagnostic configuration.
+ */
+
 /* USER CODE BEGIN Header */
 /*
  * FreeRTOS Kernel V10.3.1

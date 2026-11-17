@@ -1,3 +1,8 @@
+/**
+ * @file bsp_board.c
+ * @brief Board pin/peripheral bindings, driver initialization and failure diagnostics.
+ */
+
 #include "bsp_board.h"
 
 #include "FreeRTOS.h"
@@ -39,6 +44,9 @@ static const TftPins_t tft_pins = {
     .rst_pin = TFT_RST_Pin,
 };
 
+/**
+ * @brief Initialize the relay, button mappings, TFT SPI driver and CAN handle binding.
+ */
 void bsp_board_init(void) {
     init_step = BOARD_ERR_NONE;
     hal_relay_init(RELAY_FAN_GPIO_Port, RELAY_FAN_Pin, BSP_RELAY_ON_LEVEL);
@@ -47,10 +55,17 @@ void bsp_board_init(void) {
     hal_can_init(&hcan);
 }
 
+/**
+ * @brief Record the board initialization stage for later failure diagnosis.
+ * @param[in] step Board initialization stage currently being executed.
+ */
 void bsp_board_set_init_step(BoardError_t step) {
     init_step = step;
 }
 
+/**
+ * @brief Preserve the first board error or infer it from the recorded initialization stage.
+ */
 void bsp_board_record_error(void) {
     if (g_errorCode != BOARD_ERR_NONE) {
         return;
@@ -64,15 +79,28 @@ void bsp_board_record_error(void) {
     }
 }
 
+/**
+ * @brief Record a board error without stopping the node.
+ * @param[in] error Board error code retained for debugger inspection.
+ */
 void bsp_board_set_error(BoardError_t error) {
     g_errorCode = error;
 }
 
+/**
+ * @brief Record a board failure and enter the non-returning error handler.
+ * @param[in] error Board error code to retain for debugger inspection.
+ */
 void bsp_board_fail(BoardError_t error) {
     bsp_board_set_error(error);
     Error_Handler();
 }
 
+/**
+ * @brief Map CAN driver initialization errors to board-level failure codes.
+ * @param[in] error CAN driver initialization result to translate.
+ * @return BOARD_ERR_NONE for no error, or the corresponding board CAN failure code.
+ */
 BoardError_t bsp_board_can_error(CanError_t error) {
     switch (error) {
     case CAN_ERR_NONE:
@@ -88,6 +116,11 @@ BoardError_t bsp_board_can_error(CanError_t error) {
     }
 }
 
+/**
+ * @brief Capture the overflowing task name and stop execution through the error handler.
+ * @param[in] xTask Handle of the task whose stack overflowed; unused by this implementation.
+ * @param[in] pcTaskName FreeRTOS task name copied into the diagnostic buffer.
+ */
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {
     (void)xTask;
     for (uint32_t i = 0; (i < sizeof(g_stackOverflowTask) - 1U) && (pcTaskName[i] != '\0'); i++) {

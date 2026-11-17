@@ -32,7 +32,16 @@
 
 
 /* Variables */
+/**
+ * @brief Declare the weak console output hook used by the newlib write adapter.
+ * @param[in] ch Character value to transmit through the platform console.
+ * @return Console hook result defined by the platform implementation.
+ */
 extern int __io_putchar(int ch) __attribute__((weak));
+/**
+ * @brief Declare the weak console input hook used by the newlib read adapter.
+ * @return Character value supplied by the platform implementation.
+ */
 extern int __io_getchar(void) __attribute__((weak));
 
 
@@ -41,15 +50,28 @@ char **environ = __env;
 
 
 /* Functions */
+/**
+ * @brief Provide the empty monitor initialization hook required by the C runtime.
+ */
 void initialise_monitor_handles()
 {
 }
 
+/**
+ * @brief Return the fixed process identifier used by the bare-metal newlib adapter.
+ * @return Fixed process identifier 1.
+ */
 int _getpid(void)
 {
   return 1;
 }
 
+/**
+ * @brief Reject process signaling because this firmware has no operating-system processes.
+ * @param[in] pid Unused process identifier.
+ * @param[in] sig Unused signal number.
+ * @return -1 with errno set to EINVAL.
+ */
 int _kill(int pid, int sig)
 {
   (void)pid;
@@ -58,12 +80,23 @@ int _kill(int pid, int sig)
   return -1;
 }
 
+/**
+ * @brief Invoke the signal stub and stop forever after C runtime termination.
+ * @param[in] status Exit status forwarded to the signal stub.
+ */
 void _exit (int status)
 {
   _kill(status, -1);
   while (1) {}    /* Make sure we hang here */
 }
 
+/**
+ * @brief Read bytes using the weak __io_getchar console hook.
+ * @param[in] file Unused file descriptor.
+ * @param[out] ptr Output buffer with room for len characters.
+ * @param[in] len Number of characters to read.
+ * @return Requested byte count after all console reads complete.
+ */
 __attribute__((weak)) int _read(int file, char *ptr, int len)
 {
   (void)file;
@@ -77,6 +110,13 @@ __attribute__((weak)) int _read(int file, char *ptr, int len)
   return len;
 }
 
+/**
+ * @brief Write bytes using the weak __io_putchar console hook.
+ * @param[in] file Unused file descriptor.
+ * @param[in] ptr Input character buffer.
+ * @param[in] len Number of characters to write.
+ * @return Requested byte count after all console writes complete.
+ */
 __attribute__((weak)) int _write(int file, char *ptr, int len)
 {
   (void)file;
@@ -89,6 +129,11 @@ __attribute__((weak)) int _write(int file, char *ptr, int len)
   return len;
 }
 
+/**
+ * @brief Reject file close requests in the bare-metal C library adapter.
+ * @param[in] file Unused file descriptor.
+ * @return -1; file closing is unsupported.
+ */
 int _close(int file)
 {
   (void)file;
@@ -96,6 +141,12 @@ int _close(int file)
 }
 
 
+/**
+ * @brief Report a character device through the bare-metal C library adapter.
+ * @param[in] file Unused file descriptor or pathname.
+ * @param[out] st Output status structure whose st_mode field is set.
+ * @return 0 after setting character-device mode.
+ */
 int _fstat(int file, struct stat *st)
 {
   (void)file;
@@ -103,12 +154,24 @@ int _fstat(int file, struct stat *st)
   return 0;
 }
 
+/**
+ * @brief Treat all file descriptors as terminal devices.
+ * @param[in] file Unused file descriptor.
+ * @return 1 for every supplied descriptor.
+ */
 int _isatty(int file)
 {
   (void)file;
   return 1;
 }
 
+/**
+ * @brief Provide a no-op seek stub for the console adapter.
+ * @param[in] file Unused file descriptor.
+ * @param[in] ptr Unused requested offset.
+ * @param[in] dir Unused seek origin.
+ * @return 0; no stream position is changed.
+ */
 int _lseek(int file, int ptr, int dir)
 {
   (void)file;
@@ -117,6 +180,12 @@ int _lseek(int file, int ptr, int dir)
   return 0;
 }
 
+/**
+ * @brief Reject file opening because this adapter has no filesystem.
+ * @param[in] path Unused pathname.
+ * @param[in] flags Unused open flags.
+ * @return -1 for every request.
+ */
 int _open(char *path, int flags, ...)
 {
   (void)path;
@@ -125,6 +194,11 @@ int _open(char *path, int flags, ...)
   return -1;
 }
 
+/**
+ * @brief Reject waiting for child processes.
+ * @param[in] status Unused child-status output pointer; no value is written.
+ * @return -1 with errno set to ECHILD.
+ */
 int _wait(int *status)
 {
   (void)status;
@@ -132,6 +206,11 @@ int _wait(int *status)
   return -1;
 }
 
+/**
+ * @brief Reject file deletion because this adapter has no filesystem.
+ * @param[in] name Unused pathname.
+ * @return -1 with errno set to ENOENT.
+ */
 int _unlink(char *name)
 {
   (void)name;
@@ -139,12 +218,23 @@ int _unlink(char *name)
   return -1;
 }
 
+/**
+ * @brief Provide an unsupported process-time query stub.
+ * @param[in] buf Unused process-time output buffer.
+ * @return -1; no timing information is written.
+ */
 int _times(struct tms *buf)
 {
   (void)buf;
   return -1;
 }
 
+/**
+ * @brief Report a character device through the bare-metal C library adapter.
+ * @param[in] file Unused file descriptor or pathname.
+ * @param[out] st Output status structure whose st_mode field is set.
+ * @return 0 after setting character-device mode.
+ */
 int _stat(char *file, struct stat *st)
 {
   (void)file;
@@ -152,6 +242,12 @@ int _stat(char *file, struct stat *st)
   return 0;
 }
 
+/**
+ * @brief Reject hard-link creation because this adapter has no filesystem.
+ * @param[in] old Unused existing pathname.
+ * @param[in] new Unused new pathname.
+ * @return -1 with errno set to EMLINK.
+ */
 int _link(char *old, char *new)
 {
   (void)old;
@@ -160,12 +256,23 @@ int _link(char *old, char *new)
   return -1;
 }
 
+/**
+ * @brief Reject process creation in the bare-metal runtime.
+ * @return -1 with errno set to EAGAIN.
+ */
 int _fork(void)
 {
   errno = EAGAIN;
   return -1;
 }
 
+/**
+ * @brief Reject program execution in the bare-metal runtime.
+ * @param[in] name Unused executable pathname.
+ * @param[in] argv Unused argument vector.
+ * @param[in] env Unused environment vector.
+ * @return -1 with errno set to ENOMEM.
+ */
 int _execve(char *name, char **argv, char **env)
 {
   (void)name;

@@ -1,3 +1,8 @@
+/**
+ * @file main.c
+ * @brief Peripheral initialization and application task startup.
+ */
+
 /* USER CODE BEGIN Header */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
@@ -36,11 +41,35 @@ osThreadId defaultTaskHandle;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
+/**
+  * @brief Configure the HSE/PLL system clock and peripheral bus dividers.
+  * @retval None
+  */
 void SystemClock_Config(void);
+/**
+  * @brief Initialize board pin modes and initial output levels.
+  * @retval None
+  */
 static void MX_GPIO_Init(void);
+/**
+  * @brief Initialize CAN1 standard bus timing at 500 kbit/s.
+  * @retval None
+  */
 static void MX_CAN_Init(void);
+/**
+  * @brief Initialize the USART1 serial interface.
+  * @retval None
+  */
 static void MX_USART1_UART_Init(void);
+/**
+  * @brief Initialize the modem USART2 interface at 115200 baud.
+  * @retval None
+  */
 static void MX_USART2_UART_Init(void);
+/**
+ * @brief Delete the CubeMX default task after application tasks have been created.
+ * @param[in] argument Unused CMSIS-RTOS task argument.
+ */
 void StartDefaultTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
@@ -306,6 +335,10 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN Header_StartDefaultTask */
 /* USER CODE END Header_StartDefaultTask */
+/**
+ * @brief Delete the CubeMX default task after application tasks have been created.
+ * @param[in] argument Unused CMSIS-RTOS task argument.
+ */
 void StartDefaultTask(void const * argument)
 {
   /* USER CODE BEGIN 5 */

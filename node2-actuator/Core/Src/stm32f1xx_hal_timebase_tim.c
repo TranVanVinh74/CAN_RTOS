@@ -27,6 +27,9 @@
 /* Private variables ---------------------------------------------------------*/
 TIM_HandleTypeDef        htim4;
 /* Private function prototypes -----------------------------------------------*/
+/**
+ * @brief Dispatch the HAL time-base timer interrupt to HAL_TIM_IRQHandler.
+ */
 void TIM4_IRQHandler(void);
 /* Private functions ---------------------------------------------------------*/
 

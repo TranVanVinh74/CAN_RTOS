@@ -1,3 +1,8 @@
+/**
+ * @file app_threshold_sync.c
+ * @brief Periodic and change-triggered CAN publication of active thresholds.
+ */
+
 #include "app_threshold_sync.h"
 
 #include <stdbool.h>
@@ -12,6 +17,9 @@ static uint32_t last_attempt_ms;
 static bool sent;
 static bool attempted;
 
+/**
+ * @brief Reset transmission tracking so the next update sends the active thresholds.
+ */
 void app_threshold_sync_init(void) {
     sent = false;
     attempted = false;
@@ -20,6 +28,11 @@ void app_threshold_sync_init(void) {
 /*
  * Resend every THRESHOLD_SYNC_INTERVAL_MS so Node3 recovers the thresholds after its own
  * reset; a full TX mailbox is retried after THRESHOLD_SYNC_RETRY_MS.
+ */
+/**
+ * @brief Publish changed thresholds or a one-second refresh, spacing failed attempts by at least 100 ms.
+ * @param[in] thresholds Input gas and temperature activation thresholds; must be valid for policy evaluation.
+ * @param[in] now_ms Current monotonic time in milliseconds; unsigned subtraction handles wraparound.
  */
 void app_threshold_sync_update(const AlertThresholds_t *thresholds, uint32_t now_ms) {
     if (!alert_thresholds_valid(thresholds)) {

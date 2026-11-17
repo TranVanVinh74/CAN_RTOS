@@ -1,3 +1,8 @@
+/**
+ * @file app_alert_phone.h
+ * @brief Selection of the private or example alert destination configuration.
+ */
+
 #ifndef APP_ALERT_PHONE_H
 #define APP_ALERT_PHONE_H
 

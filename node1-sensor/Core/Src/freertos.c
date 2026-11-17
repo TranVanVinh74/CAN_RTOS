@@ -1,3 +1,8 @@
+/**
+ * @file freertos.c
+ * @brief Static storage supplied to the FreeRTOS idle task.
+ */
+
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
@@ -53,9 +58,20 @@
 /* USER CODE END FunctionPrototypes */
 
 /* GetIdleTaskMemory prototype (linked to static allocation support) */
+/**
+ * @brief Provide statically allocated task control and stack storage for the FreeRTOS idle task.
+ * @param[out] ppxIdleTaskTCBBuffer Output pointer to the static idle task control block.
+ * @param[out] ppxIdleTaskStackBuffer Output pointer to the static idle task stack.
+ * @param[out] pulIdleTaskStackSize Output idle stack capacity in StackType_t elements, not bytes.
+ */
 void vApplicationGetIdleTaskMemory( StaticTask_t **ppxIdleTaskTCBBuffer, StackType_t **ppxIdleTaskStackBuffer, uint32_t *pulIdleTaskStackSize );
 
 /* Hook prototypes */
+/**
+ * @brief Capture the overflowing task name and stop execution through the error handler.
+ * @param[in] xTask Handle of the task whose stack overflowed; unused by this implementation.
+ * @param[in] pcTaskName FreeRTOS task name copied into the diagnostic buffer.
+ */
 void vApplicationStackOverflowHook(xTaskHandle xTask, signed char *pcTaskName);
 
 /* USER CODE BEGIN 4 */
@@ -65,6 +81,12 @@ void vApplicationStackOverflowHook(xTaskHandle xTask, signed char *pcTaskName);
 static StaticTask_t xIdleTaskTCBBuffer;
 static StackType_t xIdleStack[configMINIMAL_STACK_SIZE];
 
+/**
+ * @brief Provide statically allocated task control and stack storage for the FreeRTOS idle task.
+ * @param[out] ppxIdleTaskTCBBuffer Output pointer to the static idle task control block.
+ * @param[out] ppxIdleTaskStackBuffer Output pointer to the static idle task stack.
+ * @param[out] pulIdleTaskStackSize Output idle stack capacity in StackType_t elements, not bytes.
+ */
 void vApplicationGetIdleTaskMemory(StaticTask_t **ppxIdleTaskTCBBuffer,
                                    StackType_t **ppxIdleTaskStackBuffer,
                                    uint32_t *pulIdleTaskStackSize) {

@@ -1,3 +1,8 @@
+/**
+ * @file alert_thresholds.h
+ * @brief Shared threshold defaults, validation and hysteresis policy.
+ */
+
 #ifndef ALERT_THRESHOLDS_H
 #define ALERT_THRESHOLDS_H
 
@@ -21,6 +26,11 @@ typedef struct {
     uint8_t temperature_limit_c;
 } AlertThresholds_t;
 
+/**
+ * @brief Validate the supported gas range and step and the temperature range.
+ * @param[in] thresholds Input gas and temperature thresholds to validate.
+ * @return true if the pointer and threshold values are valid; otherwise false.
+ */
 static inline bool alert_thresholds_valid(const AlertThresholds_t *thresholds) {
     return (thresholds != NULL) &&
            (thresholds->gas_limit_raw >= ALERT_GAS_MIN_RAW) &&
@@ -34,6 +44,14 @@ static inline bool alert_thresholds_valid(const AlertThresholds_t *thresholds) {
  * Hysteresis: switch on strictly above a limit, switch off only when both readings are
  * below their limit minus the hysteresis, otherwise keep the previous state. Readings
  * that hover around a limit must not toggle the fan or start a new call every frame.
+ */
+/**
+ * @brief Apply OR activation and AND deactivation with gas and temperature hysteresis.
+ * @param[in] running Previous active state used by hysteresis.
+ * @param[in] gas_raw Raw MQ5 ADC reading, before any ppm conversion.
+ * @param[in] temperature_c Temperature in whole degrees Celsius.
+ * @param[in] thresholds Input gas and temperature activation thresholds; must be valid for policy evaluation.
+ * @return Next active state; equality and the hysteresis band preserve the previous state.
  */
 static inline bool alert_should_run(bool running, uint16_t gas_raw, uint8_t temperature_c,
                                    const AlertThresholds_t *thresholds) {

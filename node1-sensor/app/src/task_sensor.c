@@ -1,3 +1,8 @@
+/**
+ * @file task_sensor.c
+ * @brief Periodic MQ5 and DHT11 sampling with sensor fault reporting.
+ */
+
 #include "task_sensor.h"
 
 #include "FreeRTOS.h"
@@ -11,6 +16,10 @@
 
 static TaskHandle_t xSensorTaskHandle = NULL;
 
+/**
+ * @brief Sample both sensors every 500 ms and enqueue readings with fault flags.
+ * @param[in] pvParameters Unused task argument; task creation passes NULL.
+ */
 static void prvSensorTask(void *pvParameters) {
     (void)pvParameters;
 
@@ -37,6 +46,10 @@ static void prvSensorTask(void *pvParameters) {
     }
 }
 
+/**
+ * @brief Create the SENSOR task that samples MQ5 and DHT11.
+ * @return pdPASS on successful task creation; otherwise the FreeRTOS allocation error.
+ */
 BaseType_t task_sensor_create(void) {
     return xTaskCreate(prvSensorTask, "SENSOR", TASK_SENSOR_STACK_WORDS, NULL, TASK_SENSOR_PRIO,
                        &xSensorTaskHandle);

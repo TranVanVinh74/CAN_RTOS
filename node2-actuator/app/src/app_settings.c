@@ -1,3 +1,8 @@
+/**
+ * @file app_settings.c
+ * @brief Persistent actuator thresholds with range validation and CRC32 checking.
+ */
+
 #include "app_settings.h"
 
 #include <stddef.h>
@@ -28,6 +33,11 @@ typedef enum {
 static AlertThresholds_t saved;
 static bool retry_required;
 
+/**
+ * @brief Compute the settings CRC32 over the first six record halfwords, least-significant byte first.
+ * @param[in] words Input eight-halfword settings record; the two CRC halfwords are excluded.
+ * @return CRC32 calculated with polynomial 0xEDB88320.
+ */
 static uint32_t checksum(const uint16_t words[SETTINGS_RECORD_WORDS]) {
     uint32_t crc = UINT32_MAX;
     for (size_t i = 0U; i < SETTINGS_WORD_CRC_LOW; i++) {
@@ -41,6 +51,11 @@ static uint32_t checksum(const uint16_t words[SETTINGS_RECORD_WORDS]) {
     return ~crc;
 }
 
+/**
+ * @brief Load and validate saved settings, falling back to defaults for an invalid record.
+ * @param[out] settings Output active settings; defaults are written when flash validation fails.
+ * @return true if a valid flash record was loaded; false for invalid storage or a NULL output.
+ */
 bool app_settings_load(AlertThresholds_t *settings) {
     if (settings == NULL) {
         return false;
@@ -78,6 +93,11 @@ bool app_settings_load(AlertThresholds_t *settings) {
     return valid;
 }
 
+/**
+ * @brief Save changed valid settings with a CRC32 and avoid redundant flash writes.
+ * @param[in] settings Input gas and temperature limits to persist.
+ * @return SETTINGS_SAVED, SETTINGS_UNCHANGED, SETTINGS_INVALID or SETTINGS_SAVE_ERROR.
+ */
 SettingsSaveResult_t app_settings_save(const AlertThresholds_t *settings) {
     if (!alert_thresholds_valid(settings)) {
         return SETTINGS_INVALID;

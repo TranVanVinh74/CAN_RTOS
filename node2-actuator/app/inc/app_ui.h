@@ -1,3 +1,8 @@
+/**
+ * @file app_ui.h
+ * @brief Display scenes, draft settings and incremental animated UI rendering.
+ */
+
 #ifndef APP_UI_H
 #define APP_UI_H
 
@@ -35,9 +40,25 @@ typedef enum {
     UI_BUTTON_COUNT
 } UiButton_t;
 
+/**
+ * @brief Reset rendering, startup animation, filtering and tile-cache state.
+ */
 void app_ui_reset(void);
+/**
+ * @brief Store the target UI snapshot and update display-only gas smoothing without drawing.
+ * @param[in] view Input snapshot of readings, active or draft thresholds, sensor faults and connection state.
+ */
 void app_ui_update(const UiView_t *view);
+/**
+ * @brief Advance animations and stream changed UI tiles to the TFT.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 void app_ui_draw(uint32_t now_ms);
+/**
+ * @brief Apply a UI button to draft settings and edit mode; persistence is handled by the actuator task.
+ * @param[in,out] view Input/output UI state; button actions modify draft thresholds or edit mode.
+ * @param[in] button UI button event to apply.
+ */
 void app_ui_button(UiView_t *view, UiButton_t button);
 
 #endif

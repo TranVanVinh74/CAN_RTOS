@@ -1,3 +1,8 @@
+/**
+ * @file hal_relay.c
+ * @brief Relay GPIO polarity, commanded state and transition diagnostics.
+ */
+
 #include "hal_relay.h"
 
 #include <stddef.h>
@@ -7,10 +12,20 @@ static uint16_t relay_pin = 0;
 static GPIO_PinState relay_on_level = GPIO_PIN_SET;
 static bool relay_on = false;
 
+/**
+ * @brief Derive the inactive GPIO level from the configured relay polarity.
+ * @return GPIO level that turns the relay off.
+ */
 static GPIO_PinState off_level(void) {
     return (relay_on_level == GPIO_PIN_SET) ? GPIO_PIN_RESET : GPIO_PIN_SET;
 }
 
+/**
+ * @brief Bind the relay GPIO and initialize it to the off state.
+ * @param[in] port Relay GPIO port.
+ * @param[in] pin Relay GPIO pin mask.
+ * @param[in] on_level GPIO level that energizes the relay.
+ */
 void hal_relay_init(GPIO_TypeDef *port, uint16_t pin, GPIO_PinState on_level) {
     relay_port = port;
     relay_pin = pin;
@@ -18,6 +33,10 @@ void hal_relay_init(GPIO_TypeDef *port, uint16_t pin, GPIO_PinState on_level) {
     hal_relay_set(false);
 }
 
+/**
+ * @brief Drive the relay output and retain the commanded state.
+ * @param[in] on true to energize the relay; false to turn it off.
+ */
 void hal_relay_set(bool on) {
     if (relay_port == NULL) {
         return;
@@ -27,6 +46,10 @@ void hal_relay_set(bool on) {
     relay_on = on;
 }
 
+/**
+ * @brief Read the relay state last commanded by the driver.
+ * @return true if the relay is commanded on; otherwise false. This is not physical relay feedback.
+ */
 bool hal_relay_is_on(void) {
     return relay_on;
 }

@@ -1,3 +1,8 @@
+/**
+ * @file task_comm.c
+ * @brief CAN sensor and threshold consumption with cellular alarm coordination.
+ */
+
 #include "task_comm.h"
 
 #include <stdbool.h>
@@ -30,11 +35,23 @@ static uint32_t last_at_check_ms = 0;
 static uint32_t last_idle_check_ms = 0;
 static bool at_checked = false;
 
+/**
+ * @brief Match standard CAN data frames by identifier and payload length.
+ * @param[in] frame Non-NULL input CAN frame.
+ * @param[in] std_id Expected standard CAN identifier.
+ * @param[in] dlc Expected payload length in bytes.
+ * @return true if IDE, RTR, identifier and DLC match; otherwise false.
+ */
 static bool is_data_frame(const CanRxFrame_t *frame, uint32_t std_id, uint8_t dlc) {
     return !frame->is_extended && !frame->is_remote && (frame->std_id == std_id) &&
            (frame->dlc == dlc);
 }
 
+/**
+ * @brief Decode and range-check threshold data before overwriting the ISR threshold queue.
+ * @param[in] frame Input frame whose metadata was validated by on_can_frame.
+ * @param[in,out] task_woken Shared FreeRTOS ISR wake flag.
+ */
 static void on_threshold_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
     AlertThresholds_t thresholds;
 
@@ -45,6 +62,11 @@ static void on_threshold_frame(const CanRxFrame_t *frame, BaseType_t *task_woken
     }
 }
 
+/**
+ * @brief Validate sensor faults, timestamp arrival and overwrite the latest-sample queue from the ISR.
+ * @param[in] frame Input frame whose metadata was validated by on_can_frame.
+ * @param[in,out] task_woken Shared FreeRTOS ISR wake flag.
+ */
 static void on_sensor_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
     SensorData_t sample = {0};
 
@@ -58,6 +80,11 @@ static void on_sensor_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
     (void)xQueueOverwriteFromISR(xSensorQueue, &sample, task_woken);
 }
 
+/**
+ * @brief Validate and decode a received CAN frame and post its data to the application queues from the ISR.
+ * @param[in] frame Input received frame; its data is copied before the callback returns.
+ * @param[in,out] task_woken Input/output FreeRTOS wake flag shared by ISR queue operations.
+ */
 static void on_can_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
     if (is_data_frame(frame, CAN_ID_THRESHOLDS, CAN_DLC_THRESHOLDS)) {
         on_threshold_frame(frame, task_woken);
@@ -66,6 +93,9 @@ static void on_can_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
     }
 }
 
+/**
+ * @brief Start CAN reception or enter the non-returning board failure handler on error.
+ */
 static void start_can(void) {
     CanError_t error = hal_can_start();
     if (error != CAN_ERR_NONE) {
@@ -73,6 +103,9 @@ static void start_can(void) {
     }
 }
 
+/**
+ * @brief Consume the latest CAN data, expire stale samples and recompute the alarm using valid channels.
+ */
 static void update_sensor_state(void) {
     SensorData_t sample;
     AlertThresholds_t thresholds;
@@ -102,15 +135,25 @@ static void update_sensor_state(void) {
                                            latest_sensor.sensor_faults, &active_thresholds);
 }
 
+/**
+ * @brief Require both a fresh sensor sample and an active alarm before automatic dialing.
+ * @return true if current alarm data permits an automatic call.
+ */
 static bool alarm_wants_call(void) {
     return sensor_fresh && alarm_active;
 }
 
+/**
+ * @brief Restart the modem boot-wait timer and clear AT-probe scheduling state.
+ */
 static void restart_modem_wait(void) {
     modem_wait_start_ms = app_time_ms();
     at_checked = false;
 }
 
+/**
+ * @brief Probe the modem, update probe timestamps and refresh sensor state after the blocking check.
+ */
 static void check_modem(void) {
     at_checked = true;
     last_at_check_ms = app_time_ms();
@@ -119,6 +162,10 @@ static void check_modem(void) {
     update_sensor_state();
 }
 
+/**
+ * @brief Consume CAN data and service modem readiness, automatic alarm calls and call cooldowns.
+ * @param[in] pvParameters Unused task argument; task creation passes NULL.
+ */
 static void prvCommTask(void *pvParameters) {
     (void)pvParameters;
 
@@ -180,6 +227,10 @@ static void prvCommTask(void *pvParameters) {
     }
 }
 
+/**
+ * @brief Register the CAN receive callback and create the COMM task.
+ * @return pdPASS on successful task creation; otherwise the FreeRTOS allocation error.
+ */
 BaseType_t task_comm_create(void) {
     hal_can_set_rx_handler(on_can_frame);
     return xTaskCreate(prvCommTask, "COMM", TASK_COMM_STACK_WORDS, NULL, TASK_COMM_PRIO,

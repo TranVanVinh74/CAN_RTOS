@@ -50,6 +50,9 @@ extern "C" {
 /* USER CODE END EM */
 
 /* Exported functions prototypes ---------------------------------------------*/
+/**
+ * @brief Disable interrupts and stop execution after an unrecoverable error.
+ */
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */

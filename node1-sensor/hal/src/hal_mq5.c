@@ -1,3 +1,8 @@
+/**
+ * @file hal_mq5.c
+ * @brief ADC calibration, MQ5 sampling and averaging diagnostics.
+ */
+
 #include "hal_mq5.h"
 
 #define MQ5_ADC_TIMEOUT_MS 10U
@@ -5,6 +10,11 @@
 static ADC_HandleTypeDef *mq5_adc = NULL;
 static uint16_t mq5_last_value = 0;
 
+/**
+ * @brief Start, poll and stop a single MQ5 ADC conversion.
+ * @param[out] value Non-NULL pointer receiving the raw ADC result on success.
+ * @return true if conversion and stop succeed; otherwise false without updating the output.
+ */
 static bool read_sample(uint16_t *value) {
     if (mq5_adc == NULL) {
         return false;
@@ -29,6 +39,11 @@ static bool read_sample(uint16_t *value) {
     return true;
 }
 
+/**
+ * @brief Calibrate the ADC, bind the MQ5 input and reset the retained reading.
+ * @param[in] hadc Initialized ADC handle for the MQ5 analog channel.
+ * @return true if a non-NULL ADC handle was calibrated successfully; otherwise false.
+ */
 bool hal_mq5_init(ADC_HandleTypeDef *hadc) {
     mq5_adc = NULL;
     mq5_last_value = 0;
@@ -41,6 +56,12 @@ bool hal_mq5_init(ADC_HandleTypeDef *hadc) {
     return true;
 }
 
+/**
+ * @brief Average successful conversions while reporting whether every requested sample succeeded.
+ * @param[in] samples Number of ADC conversions to attempt; zero is treated as one.
+ * @param[out] gas_raw Non-NULL pointer receiving the average of successful samples, or the retained value if all conversions fail.
+ * @return true only if all requested conversions succeeded; false if any conversion failed.
+ */
 bool hal_mq5_read_average(uint8_t samples, uint16_t *gas_raw) {
     uint32_t sum = 0;
     uint16_t valid_count = 0;
