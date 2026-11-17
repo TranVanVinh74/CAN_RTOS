@@ -1,3 +1,8 @@
+/**
+ * @file app_call.h
+ * @brief Voice-call commands, response handling, timeout and retry cooldown.
+ */
+
 #ifndef APP_CALL_H
 #define APP_CALL_H
 
@@ -22,11 +27,34 @@ extern volatile uint32_t g_atOK;
 extern volatile uint32_t g_callRequest;
 extern volatile uint32_t g_hangupRequest;
 
+/**
+ * @brief Read whether the application currently tracks a call attempt as active.
+ * @return true during a software-tracked call; this does not confirm the remote party answered.
+ */
 bool app_call_is_active(void);
+/**
+ * @brief Check whether no call has been attempted or 60 seconds have elapsed since the last attempt.
+ * @param[in] now Current scheduler time in milliseconds.
+ * @return true if another call attempt is permitted.
+ */
 bool app_call_cooldown_over(uint32_t now);
+/**
+ * @brief Update the diagnostic number of milliseconds remaining before another call attempt.
+ * @param[in] now Current scheduler time in milliseconds.
+ */
 void app_call_update_cooldown(uint32_t now);
+/**
+ * @brief Record an attempt, send ATD and mark the call active if UART transmission succeeds.
+ * @param[in] phone Null-terminated destination phone number inserted into the ATD voice-call command.
+ */
 void app_call_start(const char *phone);
+/**
+ * @brief Handle modem reset/end/error responses and request hang-up after 30 seconds or an explicit request.
+ */
 void app_call_service(void);
+/**
+ * @brief Consume buffered UART bytes and detect modem reset indications while idle.
+ */
 void app_call_poll_modem(void);
 
 #endif

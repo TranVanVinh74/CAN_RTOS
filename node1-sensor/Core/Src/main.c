@@ -56,11 +56,30 @@ osThreadId defaultTaskHandle;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
+/**
+ * @brief Configure the HSE/PLL system clock and peripheral bus dividers.
+ */
 void SystemClock_Config(void);
+/**
+ * @brief Initialize board pin modes and initial output levels.
+ */
 static void MX_GPIO_Init(void);
+/**
+ * @brief Initialize the MQ5 ADC input and sampling time.
+ */
 static void MX_ADC1_Init(void);
+/**
+ * @brief Initialize CAN1 standard bus timing at 500 kbit/s.
+ */
 static void MX_CAN_Init(void);
+/**
+ * @brief Initialize the 1 MHz timer used for DHT11 pulse measurements.
+ */
 static void MX_TIM2_Init(void);
+/**
+ * @brief Delete the CubeMX default task after application tasks have been created.
+ * @param[in] argument Unused CMSIS-RTOS task argument.
+ */
 void StartDefaultTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
@@ -73,7 +92,7 @@ void StartDefaultTask(void const * argument);
 /* USER CODE END 0 */
 
 /**
-  * @brief  The application entry point.
+  * @brief Initialize peripherals, bind drivers, create queues and tasks, then start the FreeRTOS scheduler.
   * @retval int
   */
 int main(void)
@@ -153,7 +172,7 @@ int main(void)
 }
 
 /**
-  * @brief System Clock Configuration
+  * @brief Configure the HSE/PLL system clock and peripheral bus dividers.
   * @retval None
   */
 void SystemClock_Config(void)
@@ -199,7 +218,7 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief ADC1 Initialization Function
+  * @brief Initialize the MQ5 ADC input and sampling time.
   * @param None
   * @retval None
   */
@@ -246,7 +265,7 @@ static void MX_ADC1_Init(void)
 }
 
 /**
-  * @brief CAN Initialization Function
+  * @brief Initialize CAN1 standard bus timing at 500 kbit/s.
   * @param None
   * @retval None
   */
@@ -283,7 +302,7 @@ static void MX_CAN_Init(void)
 }
 
 /**
-  * @brief TIM2 Initialization Function
+  * @brief Initialize the 1 MHz timer used for DHT11 pulse measurements.
   * @param None
   * @retval None
   */
@@ -328,7 +347,7 @@ static void MX_TIM2_Init(void)
 }
 
 /**
-  * @brief GPIO Initialization Function
+  * @brief Initialize board pin modes and initial output levels.
   * @param None
   * @retval None
   */
@@ -360,6 +379,10 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN Header_StartDefaultTask */
 /* USER CODE END Header_StartDefaultTask */
+/**
+ * @brief Delete the CubeMX default task after application tasks have been created.
+ * @param[in] argument Unused CMSIS-RTOS task argument.
+ */
 void StartDefaultTask(void const * argument)
 {
   /* USER CODE BEGIN 5 */
@@ -369,7 +392,7 @@ void StartDefaultTask(void const * argument)
 }
 
 /**
-  * @brief  Period elapsed callback in non blocking mode
+  * @brief Increment the HAL millisecond tick when the TIM4 time base expires.
   * @note   This function is called  when TIM4 interrupt took place, inside
   * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
   * a global variable "uwTick" used as application time base.
@@ -391,7 +414,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 }
 
 /**
-  * @brief  This function is executed in case of error occurrence.
+  * @brief Disable interrupts and stop execution after an unrecoverable error.
   * @retval None
   */
 void Error_Handler(void)
@@ -405,7 +428,7 @@ void Error_Handler(void)
 
 #ifdef  USE_FULL_ASSERT
 /**
-  * @brief  Reports the name of the source file and the source line number
+  * @brief Provide the optional full-assert callback; this implementation leaves reporting to the user.
   *         where the assert_param error has occurred.
   * @param  file: pointer to the source file name
   * @param  line: assert_param error line source number

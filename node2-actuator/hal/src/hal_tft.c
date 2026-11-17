@@ -1,3 +1,8 @@
+/**
+ * @file hal_tft.c
+ * @brief ST7735 initialization and SPI pixel transfer support.
+ */
+
 #include "hal_tft.h"
 
 #include <stddef.h>
@@ -52,22 +57,44 @@ static const uint8_t st7735_init_cmds[] = {
     ST7735_CMD_LIST_END, 0
 };
 
+/**
+ * @brief Drive a display control GPIO to the requested level.
+ * @param[in] port GPIO port to drive.
+ * @param[in] pin GPIO pin mask to drive.
+ * @param[in] high true for a high GPIO level; false for a low level.
+ */
 static void pin_write(GPIO_TypeDef *port, uint16_t pin, bool high) {
     HAL_GPIO_WritePin(port, pin, high ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
+/**
+ * @brief Set the TFT chip-select GPIO level.
+ * @param[in] high true for a high GPIO level; false for a low level.
+ */
 static void cs_set(bool high) {
     pin_write(tft_pins.cs_port, tft_pins.cs_pin, high);
 }
 
+/**
+ * @brief Set the TFT data/command GPIO level.
+ * @param[in] high true for a high GPIO level; false for a low level.
+ */
 static void dc_set(bool high) {
     pin_write(tft_pins.dc_port, tft_pins.dc_pin, high);
 }
 
+/**
+ * @brief Set the TFT reset GPIO level.
+ * @param[in] high true for a high GPIO level; false for a low level.
+ */
 static void rst_set(bool high) {
     pin_write(tft_pins.rst_port, tft_pins.rst_pin, high);
 }
 
+/**
+ * @brief Transmit one TFT SPI byte unless a previous SPI error has stopped the driver.
+ * @param[in] byte Byte to transmit.
+ */
 static void spi_send(uint8_t byte) {
     if (g_tftSPIErrors != 0U) {
         return;
@@ -88,6 +115,10 @@ static void spi_send(uint8_t byte) {
     }
 }
 
+/**
+ * @brief Send one ST7735 command with the data/command line low.
+ * @param[in] cmd ST7735 command byte.
+ */
 static void write_cmd(uint8_t cmd) {
     dc_set(false);
     cs_set(false);
@@ -95,6 +126,10 @@ static void write_cmd(uint8_t cmd) {
     cs_set(true);
 }
 
+/**
+ * @brief Send one ST7735 parameter byte with the data/command line high.
+ * @param[in] data ST7735 parameter byte to transmit.
+ */
 static void write_data(uint8_t data) {
     dc_set(true);
     cs_set(false);
@@ -102,6 +137,10 @@ static void write_data(uint8_t data) {
     cs_set(true);
 }
 
+/**
+ * @brief Execute a packed ST7735 command list until its sentinel or an SPI error.
+ * @param[in] list Packed command/count/parameter sequence terminated by ST7735_CMD_LIST_END.
+ */
 static void send_cmd_list(const uint8_t *list) {
     while (g_tftSPIErrors == 0U) {
         uint8_t cmd = *list++;
@@ -118,6 +157,13 @@ static void send_cmd_list(const uint8_t *list) {
     }
 }
 
+/**
+ * @brief Set the inclusive ST7735 column and row address window.
+ * @param[in] x1 First column of the inclusive window.
+ * @param[in] y1 First row of the inclusive window.
+ * @param[in] x2 Last column of the inclusive window.
+ * @param[in] y2 Last row of the inclusive window.
+ */
 static void set_window(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2) {
     write_cmd(ST7735_CASET);
     write_data(0x00U);
@@ -132,6 +178,11 @@ static void set_window(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2) {
     write_data(y2);
 }
 
+/**
+ * @brief Bind TFT control pins and SPI, reset the panel and configure ST7735 RGB565 mode.
+ * @param[in] hspi Initialized SPI handle connected to the display.
+ * @param[in] pins Input mapping of the TFT CS, DC and reset GPIOs.
+ */
 void hal_tft_init(SPI_HandleTypeDef *hspi, const TftPins_t *pins) {
     tft_spi = hspi;
     g_tftSPIErrors = 0;
@@ -178,15 +229,32 @@ void hal_tft_init(SPI_HandleTypeDef *hspi, const TftPins_t *pins) {
     HAL_Delay(TFT_DISPON_WAIT_MS);
 }
 
+/**
+ * @brief Check that a TFT SPI handle is bound and no SPI error has been recorded.
+ * @return true if the TFT driver is ready and has no recorded SPI error.
+ */
 bool hal_tft_ok(void) {
     return (tft_spi != NULL) && (g_tftSPIErrors == 0U);
 }
 
+/**
+ * @brief Check that a nonempty drawing rectangle fits the panel and the driver has no SPI error.
+ * @param[in] x Left coordinate in pixels.
+ * @param[in] y Top coordinate in pixels.
+ * @param[in] width Rectangle width in pixels.
+ * @param[in] height Rectangle height in pixels.
+ * @return true if the rectangle fits and SPI is healthy; otherwise false.
+ */
 static bool valid_rect(uint8_t x, uint8_t y, uint16_t width, uint16_t height) {
     return (g_tftSPIErrors == 0U) && (width > 0U) && (height > 0U) &&
            ((uint16_t)x + width <= TFT_WIDTH) && ((uint16_t)y + height <= TFT_HEIGHT);
 }
 
+/**
+ * @brief Transmit a block of TFT pixel bytes and record any SPI failure.
+ * @param[in] data Input bytes to transmit.
+ * @param[in] size Number of bytes to transmit.
+ */
 static void stream_bytes(uint8_t *data, uint16_t size) {
     if (g_tftSPIErrors != 0U) {
         return;
@@ -199,6 +267,14 @@ static void stream_bytes(uint8_t *data, uint16_t size) {
     }
 }
 
+/**
+ * @brief Render a rectangle row by row through a painter callback and stream RGB565 pixels over SPI.
+ * @param[in] x Left coordinate in pixels.
+ * @param[in] y Top coordinate in pixels.
+ * @param[in] width Rectangle width in pixels.
+ * @param[in] height Rectangle height in pixels.
+ * @param[in] painter Synchronous callback that fills width RGB565 pixels for each zero-based region row.
+ */
 void hal_tft_draw_region(uint8_t x, uint8_t y, uint8_t width, uint8_t height,
                          TftRowPainter_t painter) {
     static uint16_t row_pixels[TFT_WIDTH];

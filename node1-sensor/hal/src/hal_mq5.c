@@ -1,3 +1,8 @@
+/**
+ * @file hal_mq5.c
+ * @brief ADC calibration, MQ5 sampling and averaging diagnostics.
+ */
+
 #include "hal_mq5.h"
 
 #define MQ5_ADC_TIMEOUT_MS 10U
@@ -8,11 +13,20 @@ volatile uint32_t g_mq5ReadErrors = 0;
 static ADC_HandleTypeDef *mq5_adc = NULL;
 static uint16_t mq5_last_value = 0;
 
+/**
+ * @brief Store the MQ5 error code and increment the failed-read counter.
+ * @param[in] error ADC operation error to expose in driver diagnostics.
+ */
 static void record_read_error(Mq5Error_t error) {
     g_mq5Error = error;
     g_mq5ReadErrors++;
 }
 
+/**
+ * @brief Start one ADC conversion, poll for completion and stop the ADC.
+ * @param[out] value Output ADC sample; written only when conversion and stop succeed.
+ * @return HAL_OK if the output sample is valid; otherwise the failed HAL operation status.
+ */
 static HAL_StatusTypeDef read_sample(uint16_t *value) {
     if (mq5_adc == NULL) {
         g_mq5Error = MQ5_ERR_NO_ADC;
@@ -44,6 +58,10 @@ static HAL_StatusTypeDef read_sample(uint16_t *value) {
     return HAL_OK;
 }
 
+/**
+ * @brief Calibrate the ADC and bind it to the MQ5 driver.
+ * @param[in] hadc Initialized ADC handle for the MQ5 analog input.
+ */
 void hal_mq5_init(ADC_HandleTypeDef *hadc) {
     mq5_adc = NULL;
     mq5_last_value = 0;
@@ -63,6 +81,11 @@ void hal_mq5_init(ADC_HandleTypeDef *hadc) {
     mq5_adc = hadc;
 }
 
+/**
+ * @brief Average successful MQ5 ADC conversions and retain the previous value when all conversions fail.
+ * @param[in] samples Number of conversions to attempt; zero is treated as one sample.
+ * @return Average raw ADC value, or the last valid value if no sample succeeds; inspect g_mq5Error for faults.
+ */
 uint16_t hal_mq5_read_average(uint8_t samples) {
     uint32_t sum = 0;
     uint16_t valid_count = 0;

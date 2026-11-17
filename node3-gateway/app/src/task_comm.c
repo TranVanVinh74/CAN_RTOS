@@ -1,3 +1,8 @@
+/**
+ * @file task_comm.c
+ * @brief CAN sensor and threshold consumption with cellular alarm coordination.
+ */
+
 #include "task_comm.h"
 
 #include <stdbool.h>
@@ -50,15 +55,29 @@ static AlertThresholds_t active_thresholds = {
     .temperature_limit_c = ALERT_TEMPERATURE_DEFAULT_C,
 };
 
+/**
+ * @brief Convert the FreeRTOS tick count into milliseconds.
+ * @return Current scheduler time in milliseconds, with unsigned wraparound.
+ */
 static uint32_t now_ms(void) {
     return (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
 }
 
+/**
+ * @brief Check that a frame is a standard sensor data frame with the expected identifier and DLC.
+ * @param[in] frame Input received CAN frame metadata.
+ * @return true if the frame metadata matches the sensor protocol.
+ */
 static bool is_sensor_frame(const CanRxFrame_t *frame) {
     return !frame->is_extended && !frame->is_remote && (frame->std_id == CAN_ID_SENSOR) &&
            (frame->dlc == CAN_DLC_SENSOR);
 }
 
+/**
+ * @brief Validate and decode a received CAN frame and post its data to the application queues from the ISR.
+ * @param[in] frame Input received frame; its data is copied before the callback returns.
+ * @param[in,out] task_woken Input/output FreeRTOS wake flag shared by ISR queue operations.
+ */
 static void on_can_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
     SensorData_t sample = {0};
 
@@ -102,6 +121,9 @@ static void on_can_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
     }
 }
 
+/**
+ * @brief Start CAN reception or enter the non-returning board failure handler on error.
+ */
 static void start_can(void) {
     static const BoardError_t board_error[] = {
         [CAN_ERR_NONE] = BOARD_ERR_NONE,
@@ -121,12 +143,18 @@ static void start_can(void) {
     g_canStage = CAN_STAGE_RUNNING;
 }
 
+/**
+ * @brief Recompute the alarm state from the latest readings, sensor faults and active thresholds.
+ */
 static void update_alarm(void) {
     alarm_active = sensor_alarm_should_run(alarm_active, latest_sensor.gas_raw,
                                            latest_sensor.temperature, latest_sensor.sensor_faults,
                                            &active_thresholds);
 }
 
+/**
+ * @brief Consume the latest thresholds and readings, update sample age and gate the alarm on freshness.
+ */
 static void sensor_update(void) {
     SensorData_t sample;
     AlertThresholds_t thresholds;
@@ -164,6 +192,13 @@ static void sensor_update(void) {
     g_alarmActive = ((g_sensorFresh != 0U) && alarm_active) ? 1U : 0U;
 }
 
+/**
+ * @brief Probe the modem with AT when the retry interval permits and update readiness diagnostics.
+ * @param[in] now Current scheduler time in milliseconds.
+ * @param[in,out] last_check_ms Input/output timestamp of the most recent probe attempt.
+ * @param[in,out] checked Input/output flag indicating that at least one probe has been attempted.
+ * @return true if a probe was attempted; false if the retry interval has not elapsed.
+ */
 static bool check_modem(uint32_t now, uint32_t *last_check_ms, bool *checked) {
     if (*checked && ((now - *last_check_ms) < MODEM_AT_RETRY_MS)) {
         return false;
@@ -184,10 +219,18 @@ static bool check_modem(uint32_t now, uint32_t *last_check_ms, bool *checked) {
     return true;
 }
 
+/**
+ * @brief Require both a fresh sensor sample and an active alarm before automatic dialing.
+ * @return true if current alarm data permits an automatic call.
+ */
 static bool alarm_wants_call(void) {
     return (g_sensorFresh != 0U) && alarm_active;
 }
 
+/**
+ * @brief Consume CAN data and service modem readiness, alarm calls and call cooldowns.
+ * @param[in] pvParameters Unused task argument; task creation passes NULL.
+ */
 static void prvCommTask(void *pvParameters) {
     (void)pvParameters;
 
@@ -270,6 +313,10 @@ static void prvCommTask(void *pvParameters) {
     }
 }
 
+/**
+ * @brief Register the CAN receive callback and create the COMM task.
+ * @return pdPASS on successful task creation; otherwise the FreeRTOS allocation error.
+ */
 BaseType_t task_comm_create(void) {
     hal_can_set_rx_handler(on_can_frame);
     return xTaskCreate(prvCommTask, "COMM", TASK_COMM_STACK_WORDS, NULL, TASK_COMM_PRIO,

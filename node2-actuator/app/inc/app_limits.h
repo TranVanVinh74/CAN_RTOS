@@ -1,3 +1,8 @@
+/**
+ * @file app_limits.h
+ * @brief Actuator limits mapped to the shared alert threshold constraints.
+ */
+
 #ifndef APP_LIMITS_H
 #define APP_LIMITS_H
 

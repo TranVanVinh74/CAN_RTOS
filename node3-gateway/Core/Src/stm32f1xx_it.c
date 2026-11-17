@@ -68,7 +68,7 @@ extern TIM_HandleTypeDef htim4;
 /*           Cortex-M3 Processor Interruption and Exception Handlers          */
 /******************************************************************************/
 /**
-  * @brief This function handles Non maskable interrupt.
+  * @brief Handle a non-maskable interrupt through the generated exception handler.
   */
 void NMI_Handler(void)
 {
@@ -82,7 +82,7 @@ void NMI_Handler(void)
 }
 
 /**
-  * @brief This function handles Hard fault interrupt.
+  * @brief Stop execution when the Cortex-M core reports a hard fault.
   */
 void HardFault_Handler(void)
 {
@@ -97,7 +97,7 @@ void HardFault_Handler(void)
 }
 
 /**
-  * @brief This function handles Memory management fault.
+  * @brief Stop execution when a memory management fault occurs.
   */
 void MemManage_Handler(void)
 {
@@ -112,7 +112,7 @@ void MemManage_Handler(void)
 }
 
 /**
-  * @brief This function handles Prefetch fault, memory access fault.
+  * @brief Stop execution when a bus access fault occurs.
   */
 void BusFault_Handler(void)
 {
@@ -127,7 +127,7 @@ void BusFault_Handler(void)
 }
 
 /**
-  * @brief This function handles Undefined instruction or illegal state.
+  * @brief Stop execution when an instruction usage fault occurs.
   */
 void UsageFault_Handler(void)
 {
@@ -142,7 +142,7 @@ void UsageFault_Handler(void)
 }
 
 /**
-  * @brief This function handles Debug monitor.
+  * @brief Provide the Cortex-M debug monitor exception entry point.
   */
 void DebugMon_Handler(void)
 {
@@ -162,7 +162,7 @@ void DebugMon_Handler(void)
 /******************************************************************************/
 
 /**
-  * @brief This function handles USB low priority or CAN RX0 interrupts.
+  * @brief Dispatch the CAN1 FIFO0 interrupt to HAL_CAN_IRQHandler.
   */
 void USB_LP_CAN1_RX0_IRQHandler(void)
 {
@@ -176,7 +176,7 @@ void USB_LP_CAN1_RX0_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles TIM4 global interrupt.
+  * @brief Dispatch the HAL time-base timer interrupt to HAL_TIM_IRQHandler.
   */
 void TIM4_IRQHandler(void)
 {
@@ -190,7 +190,7 @@ void TIM4_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles USART2 global interrupt.
+  * @brief Capture modem receive bytes and dispatch remaining UART events to HAL.
   */
 void USART2_IRQHandler(void)
 {

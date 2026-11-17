@@ -1,3 +1,8 @@
+/**
+ * @file hal_settings_flash.c
+ * @brief Read, erase, program and verify the reserved settings flash page.
+ */
+
 #include "hal_settings_flash.h"
 
 #include "stm32f1xx_hal.h"
@@ -8,6 +13,11 @@
 extern const uint16_t __settings_start__[];
 extern const uint16_t __settings_end__[];
 
+/**
+ * @brief Check the linker-reserved settings page size and requested record length.
+ * @param[in] words Record length in 16-bit halfwords.
+ * @return true if the reserved page is 1 KB and the record fits with its commit words.
+ */
 static bool valid_size(size_t words) {
     return ((uintptr_t)__settings_end__ - (uintptr_t)__settings_start__ ==
             SETTINGS_PAGE_BYTES) &&
@@ -15,6 +25,12 @@ static bool valid_size(size_t words) {
            (words <= SETTINGS_PAGE_BYTES / sizeof(uint16_t));
 }
 
+/**
+ * @brief Copy a settings record from the linker-reserved flash page.
+ * @param[out] data Output buffer with room for words 16-bit halfwords.
+ * @param[in] words Number of 16-bit halfwords to read.
+ * @return true if the destination and record size are valid; this does not validate the record CRC.
+ */
 bool hal_settings_flash_read(uint16_t *data, size_t words) {
     if ((data == NULL) || !valid_size(words)) {
         return false;
@@ -27,6 +43,12 @@ bool hal_settings_flash_read(uint16_t *data, size_t words) {
     return true;
 }
 
+/**
+ * @brief Erase the settings page, write the record with commit words last, verify it and lock flash.
+ * @param[in] data Input settings record; the first two halfwords are programmed last as commit markers.
+ * @param[in] words Record length in 16-bit halfwords.
+ * @return true if erase, programming, readback and relocking succeed; otherwise false.
+ */
 bool hal_settings_flash_write(const uint16_t *data, size_t words) {
     if ((data == NULL) || !valid_size(words)) {
         return false;

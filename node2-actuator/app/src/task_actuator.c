@@ -1,3 +1,8 @@
+/**
+ * @file task_actuator.c
+ * @brief CAN sensor consumption, relay control, buttons and UI servicing.
+ */
+
 #include "task_actuator.h"
 
 #include "FreeRTOS.h"
@@ -39,6 +44,13 @@ volatile AlertThresholds_t g_activeThresholds = {0};
 
 static TaskHandle_t xActuatorTaskHandle = NULL;
 
+/**
+ * @brief Apply debounced button events, persist SAVE changes and update active settings.
+ * @param[in,out] view Input/output UI state, including draft thresholds and save errors.
+ * @param[in,out] active Input/output thresholds applied to control; updated after a successful save.
+ * @param[in] now_ms Current monotonic time in milliseconds; unsigned subtraction handles wraparound.
+ * @return true if a successful save changed the active thresholds; otherwise false.
+ */
 static bool process_buttons(UiView_t *view, AppSettings_t *active, uint32_t now_ms) {
     static const UiButton_t ui_buttons[BUTTON_COUNT] = {
         [BUTTON_SELECT] = UI_BUTTON_SELECT,
@@ -73,11 +85,21 @@ static bool process_buttons(UiView_t *view, AppSettings_t *active, uint32_t now_
     return changed;
 }
 
+/**
+ * @brief Check that a frame is a standard sensor data frame with the expected identifier and DLC.
+ * @param[in] frame Input received CAN frame metadata.
+ * @return true if the frame metadata matches the sensor protocol.
+ */
 static bool is_sensor_frame(const CanRxFrame_t *frame) {
     return !frame->is_extended && !frame->is_remote && (frame->std_id == CAN_ID_SENSOR) &&
            (frame->dlc == CAN_DLC_SENSOR);
 }
 
+/**
+ * @brief Validate and decode a received CAN frame and post its data to the application queues from the ISR.
+ * @param[in] frame Input received frame; its data is copied before the callback returns.
+ * @param[in,out] task_woken Input/output FreeRTOS wake flag shared by ISR queue operations.
+ */
 static void on_can_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
     ActuatorCommand_t cmd = {0};
 
@@ -99,12 +121,20 @@ static void on_can_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
     }
 }
 
+/**
+ * @brief Stage the current UI view and update display diagnostics.
+ * @param[in] view Input UI snapshot containing readings, thresholds and connection state.
+ */
 static void draw_view(const UiView_t *view) {
     app_ui_render(view);
     g_tftStage = hal_tft_ok() ?
                  (view->has_data ? TFT_STAGE_DATA : TFT_STAGE_WAITING) : TFT_STAGE_ERROR;
 }
 
+/**
+ * @brief Start CAN reception and record or report the failing initialization stage.
+ * @return true if CAN reception starts; false after recording a startup error.
+ */
 static bool start_can(void) {
     static const BoardError_t board_error[] = {
         [CAN_ERR_NONE] = BOARD_ERR_NONE,
@@ -127,6 +157,10 @@ static bool start_can(void) {
     return true;
 }
 
+/**
+ * @brief Process sensor frames, control the fan, scan buttons and service the display and threshold synchronization.
+ * @param[in] pvParameters Unused task argument; task creation passes NULL.
+ */
 static void prvActuatorTask(void *pvParameters) {
     (void)pvParameters;
 
@@ -214,6 +248,10 @@ static void prvActuatorTask(void *pvParameters) {
     }
 }
 
+/**
+ * @brief Register the CAN receive callback and create the ACTUATOR task.
+ * @return pdPASS on successful task creation; otherwise the FreeRTOS allocation error.
+ */
 BaseType_t task_actuator_create(void) {
     hal_can_set_rx_handler(on_can_frame);
     return xTaskCreate(prvActuatorTask, "ACTUATOR", TASK_ACTUATOR_STACK_WORDS, NULL,

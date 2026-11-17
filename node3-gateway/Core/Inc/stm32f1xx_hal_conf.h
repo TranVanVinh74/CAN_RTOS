@@ -378,6 +378,11 @@
   */
 #define assert_param(expr) ((expr) ? (void)0U : assert_failed((uint8_t *)__FILE__, __LINE__))
 /* Exported functions ------------------------------------------------------- */
+/**
+ * @brief Provide the optional full-assert callback; this implementation leaves reporting to the user.
+ * @param[in] file Source filename associated with the failed HAL assertion.
+ * @param[in] line Source line number of the failed assertion.
+ */
 void assert_failed(uint8_t* file, uint32_t line);
 #else
 #define assert_param(expr) ((void)0U)

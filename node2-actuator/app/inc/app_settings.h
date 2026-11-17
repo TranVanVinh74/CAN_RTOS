@@ -1,3 +1,8 @@
+/**
+ * @file app_settings.h
+ * @brief Persistent actuator thresholds with range validation and CRC32 checking.
+ */
+
 #ifndef APP_SETTINGS_H
 #define APP_SETTINGS_H
 
@@ -20,7 +25,17 @@ extern volatile uint32_t g_settingsWriteCount;
 extern volatile uint32_t g_settingsSaveErrors;
 extern volatile SettingsSaveResult_t g_settingsLastSave;
 
+/**
+ * @brief Load and validate saved settings, falling back to defaults for an invalid record.
+ * @param[out] settings Output active settings; defaults are written when flash validation fails.
+ * @return true if a valid flash record was loaded; false for invalid storage or a NULL output.
+ */
 bool app_settings_load(AppSettings_t *settings);
+/**
+ * @brief Save changed valid settings with a CRC32 and avoid redundant flash writes.
+ * @param[in] settings Input gas and temperature limits to persist.
+ * @return SETTINGS_SAVED, SETTINGS_UNCHANGED, SETTINGS_INVALID or SETTINGS_SAVE_ERROR.
+ */
 SettingsSaveResult_t app_settings_save(const AppSettings_t *settings);
 
 #endif

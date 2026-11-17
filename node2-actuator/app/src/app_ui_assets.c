@@ -1,3 +1,8 @@
+/**
+ * @file app_ui_assets.c
+ * @brief Rasterized fonts, icons and gauge masks used by the display renderer.
+ */
+
 #include "app_ui_assets.h"
 
 static const uint8_t font_small_mask[1135] = {

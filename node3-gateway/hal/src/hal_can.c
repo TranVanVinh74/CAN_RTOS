@@ -1,3 +1,8 @@
+/**
+ * @file hal_can.c
+ * @brief CAN peripheral binding and frame transfer support.
+ */
+
 #include "hal_can.h"
 
 #include <stddef.h>
@@ -11,6 +16,10 @@ volatile uint32_t g_canReadErrorCount = 0;
 static CAN_HandleTypeDef *can_handle = NULL;
 static CanRxHandler_t can_rx_handler = NULL;
 
+/**
+ * @brief Configure filter bank 0 to accept all identifiers into receive FIFO0.
+ * @return HAL_OK on success; otherwise the HAL filter configuration status.
+ */
 static HAL_StatusTypeDef config_accept_all_filter(void) {
     CAN_FilterTypeDef filter = {0};
 
@@ -27,14 +36,26 @@ static HAL_StatusTypeDef config_accept_all_filter(void) {
     return HAL_CAN_ConfigFilter(can_handle, &filter);
 }
 
+/**
+ * @brief Bind the driver to the CAN peripheral handle.
+ * @param[in] hcan CAN peripheral handle initialized by CubeMX; must remain valid while the driver is used.
+ */
 void hal_can_init(CAN_HandleTypeDef *hcan) {
     can_handle = hcan;
 }
 
+/**
+ * @brief Register the application callback invoked for frames read from CAN FIFO0.
+ * @param[in] rx_handler Receive callback executed in interrupt context, or NULL to disable application dispatch.
+ */
 void hal_can_set_rx_handler(CanRxHandler_t rx_handler) {
     can_rx_handler = rx_handler;
 }
 
+/**
+ * @brief Configure the receive filter, start CAN and enable the FIFO0 message-pending interrupt.
+ * @return CAN_ERR_NONE on success; otherwise the failing initialization stage.
+ */
 CanError_t hal_can_start(void) {
     if (can_handle == NULL) {
         return CAN_ERR_NO_HANDLE;
@@ -58,10 +79,18 @@ CanError_t hal_can_start(void) {
     return CAN_ERR_NONE;
 }
 
+/**
+ * @brief Read the HAL CAN error flags.
+ * @return HAL CAN error bitmask, or zero when no handle is bound.
+ */
 uint32_t hal_can_get_error(void) {
     return (can_handle != NULL) ? HAL_CAN_GetError(can_handle) : 0U;
 }
 
+/**
+ * @brief Drain received CAN frames, dispatch the ISR callback and request a task switch if needed.
+ * @param[in] hcan CAN handle supplied by HAL; frames are processed only for the bound peripheral.
+ */
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
     BaseType_t task_woken = pdFALSE;
 

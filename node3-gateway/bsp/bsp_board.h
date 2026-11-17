@@ -1,3 +1,8 @@
+/**
+ * @file bsp_board.h
+ * @brief Board pin/peripheral bindings, driver initialization and failure diagnostics.
+ */
+
 #ifndef BSP_BOARD_H
 #define BSP_BOARD_H
 
@@ -23,9 +28,23 @@ typedef enum {
 
 extern volatile uint32_t g_errorCode;
 
+/**
+ * @brief Bind CAN and initialize the A7680C driver on USART2.
+ */
 void bsp_board_init(void);
+/**
+ * @brief Record a board error and enter the non-returning error handler.
+ * @param[in] error Board error code identifying the failed initialization or runtime check.
+ */
 void bsp_board_fail(BoardError_t error);
+/**
+ * @brief Record the initialization step so a later HAL failure can be identified.
+ * @param[in] step Board initialization stage currently being executed.
+ */
 void bsp_board_set_init_step(BoardError_t step);
+/**
+ * @brief Preserve the first board error or infer it from the current initialization stage.
+ */
 void bsp_board_record_error(void);
 
 #endif

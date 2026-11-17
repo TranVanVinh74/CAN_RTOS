@@ -1,3 +1,8 @@
+/**
+ * @file task_can_tx.c
+ * @brief Queue-driven packing and transmission of sensor CAN frames.
+ */
+
 #include "task_can_tx.h"
 
 #include "FreeRTOS.h"
@@ -12,6 +17,10 @@ volatile uint32_t g_canTxQueueTimeoutCount = 0;
 
 static TaskHandle_t xCanTxTaskHandle = NULL;
 
+/**
+ * @brief Wait for queued sensor readings, pack five payload bytes and request CAN transmission.
+ * @param[in] pvParameters Unused task argument; task creation passes NULL.
+ */
 static void prvCanTxTask(void *pvParameters) {
     (void)pvParameters;
 
@@ -30,6 +39,10 @@ static void prvCanTxTask(void *pvParameters) {
     }
 }
 
+/**
+ * @brief Create the CAN_TX task that consumes sensor samples and queues CAN frames.
+ * @return pdPASS on successful task creation; otherwise the FreeRTOS allocation error.
+ */
 BaseType_t task_can_tx_create(void) {
     return xTaskCreate(prvCanTxTask, "CAN_TX", TASK_CAN_TX_STACK_WORDS, NULL, TASK_CAN_TX_PRIO,
                        &xCanTxTaskHandle);

@@ -1,3 +1,8 @@
+/**
+ * @file app_ui.c
+ * @brief Display scenes, draft settings and incremental animated UI rendering.
+ */
+
 #include "app_ui.h"
 
 #ifdef UI_PREVIEW
@@ -93,6 +98,10 @@ static uint8_t reveal_height;
 static uint32_t transition_ms;
 static bool screen_started;
 
+/**
+ * @brief Append text to the bounded UI label buffer.
+ * @param[in] value Null-terminated text to append or draw.
+ */
 static void append(const char *value) {
     while (*value != '\0' && label_length < UI_LABEL_CAPACITY - 1U) {
         label[label_length++] = *value++;
@@ -100,11 +109,19 @@ static void append(const char *value) {
     label[label_length] = '\0';
 }
 
+/**
+ * @brief Replace the UI label buffer with the supplied text.
+ * @param[in] value Null-terminated text to append or draw.
+ */
 static void set_label(const char *value) {
     label_length = 0U;
     append(value);
 }
 
+/**
+ * @brief Append an unsigned decimal number to the UI label buffer.
+ * @param[in] value Unsigned integer to format in decimal.
+ */
 static void number(uint16_t value) {
     uint16_t divisor = 10000U;
     while (divisor > 1U && value < divisor) {
@@ -120,6 +137,12 @@ static void number(uint16_t value) {
     label[label_length] = '\0';
 }
 
+/**
+ * @brief Find a character glyph in a font.
+ * @param[in] font Input font and glyph bitmap metadata.
+ * @param[in] code Character code to locate in the font.
+ * @return Matching glyph pointer, or NULL if the character is not in the font.
+ */
 static const UiGlyph_t *glyph(const UiFont_t *font, uint16_t code) {
     for (uint8_t i = 0U; i < font->count; i++) {
         if (font->glyphs[i].code == code) {
@@ -129,6 +152,11 @@ static const UiGlyph_t *glyph(const UiFont_t *font, uint16_t code) {
     return NULL;
 }
 
+/**
+ * @brief Read the next character, handling the supported UTF-8 degree symbol, and advance the text cursor.
+ * @param[in,out] text Input/output cursor into a supported null-terminated string; advanced past the decoded character.
+ * @return Character code; the supported degree symbol is normalized to 0xB0.
+ */
 static uint16_t next_code(const char **text) {
     uint16_t code = (uint8_t)*(*text)++;
     if (code == 0xC2U && (uint8_t)**text == 0xB0U) {
@@ -138,6 +166,12 @@ static uint16_t next_code(const char **text) {
     return code;
 }
 
+/**
+ * @brief Measure rendered text width using glyph advances.
+ * @param[in] font Input font and glyph bitmap metadata.
+ * @param[in] text Null-terminated input string.
+ * @return Rendered string width in pixels, converted to uint8_t.
+ */
 static uint8_t text_width(const UiFont_t *font, const char *text) {
     uint16_t width = 0U;
     while (*text != '\0') {
@@ -149,10 +183,22 @@ static uint8_t text_width(const UiFont_t *font, const char *text) {
     return (uint8_t)width;
 }
 
+/**
+ * @brief Clear the drawing operation list before composing a scene.
+ */
 static void begin(void) {
     op_count = 0U;
 }
 
+/**
+ * @brief Append a masked or solid rectangle to the bounded drawing operation list.
+ * @param[in] x Left coordinate in pixels.
+ * @param[in] y Top coordinate in pixels.
+ * @param[in] width Rectangle width in pixels.
+ * @param[in] height Rectangle height in pixels.
+ * @param[in] mask Input packed four-bit alpha mask, or NULL for an opaque rectangle.
+ * @param[in] color RGB565 foreground color.
+ */
 static void add(uint8_t x, uint8_t y, uint8_t width, uint8_t height,
                 const uint8_t *mask, uint16_t color) {
 #ifdef UI_PREVIEW
@@ -164,6 +210,14 @@ static void add(uint8_t x, uint8_t y, uint8_t width, uint8_t height,
     }
 }
 
+/**
+ * @brief Append drawing operations for each supported glyph in a string.
+ * @param[in] x Left coordinate in pixels.
+ * @param[in] y Top coordinate in pixels.
+ * @param[in] value Null-terminated text to append or draw.
+ * @param[in] font Input font and glyph bitmap metadata.
+ * @param[in] color RGB565 foreground color.
+ */
 static void text(uint8_t x, uint8_t y, const char *value, const UiFont_t *font,
                  uint16_t color) {
     while (*value != '\0') {
@@ -175,10 +229,24 @@ static void text(uint8_t x, uint8_t y, const char *value, const UiFont_t *font,
     }
 }
 
+/**
+ * @brief Place text horizontally centered on the display.
+ * @param[in] y Top coordinate in pixels.
+ * @param[in] value Null-terminated text to append or draw.
+ * @param[in] font Input font and glyph bitmap metadata.
+ * @param[in] color RGB565 foreground color.
+ */
 static void centered(uint8_t y, const char *value, const UiFont_t *font, uint16_t color) {
     text((uint8_t)((TFT_WIDTH - text_width(font, value)) / 2U), y, value, font, color);
 }
 
+/**
+ * @brief Blend foreground and background RGB565 colors with a four-bit alpha value.
+ * @param[in] fg Foreground RGB565 color.
+ * @param[in] bg Background RGB565 color.
+ * @param[in] alpha Foreground alpha from 0 (transparent) to 15 (opaque).
+ * @return Blended RGB565 color.
+ */
 static uint16_t blend(uint16_t fg, uint16_t bg, uint8_t alpha) {
     uint32_t inverse = 15U - alpha;
     uint32_t r = ((fg >> 11) * alpha + (bg >> 11) * inverse + 7U) / 15U;
@@ -187,6 +255,11 @@ static uint16_t blend(uint16_t fg, uint16_t bg, uint8_t alpha) {
     return (uint16_t)((r << 11) | (g << 5) | b);
 }
 
+/**
+ * @brief Express the raw gas reading as a percentage of the selected threshold, capped at 999 percent.
+ * @param[in] view Input UI snapshot containing readings, thresholds and connection state.
+ * @return Gas reading as a percentage of threshold, limited to 999.
+ */
 static uint16_t gas_percent(const UiView_t *view) {
     uint32_t threshold = view->gas_threshold < UI_GAS_THRESHOLD_MIN ?
                          UI_GAS_THRESHOLD_MIN : view->gas_threshold;
@@ -194,15 +267,29 @@ static uint16_t gas_percent(const UiView_t *view) {
     return percent > UI_GAS_DISPLAY_MAX_PERCENT ? UI_GAS_DISPLAY_MAX_PERCENT : percent;
 }
 
+/**
+ * @brief Clamp the animated gas gauge to its 150 percent full scale.
+ * @return Gauge percentage in the range 0 to 150.
+ */
 static uint16_t gauge_percent(void) {
     return shown_gas > UI_GAS_GAUGE_FULL_SCALE_PERCENT ?
            UI_GAS_GAUGE_FULL_SCALE_PERCENT : shown_gas;
 }
 
+/**
+ * @brief Compute the percentage represented by a gauge arc segment.
+ * @param[in] segment Zero-based gauge arc index; must be less than UI_ARC_COUNT.
+ * @return Percentage at the selected arc segment.
+ */
 static uint8_t arc_percent(uint8_t segment) {
     return (uint16_t)segment * UI_GAS_GAUGE_FULL_SCALE_PERCENT / (UI_ARC_COUNT - 1U);
 }
 
+/**
+ * @brief Classify gas as safe, warning or danger while excluding a faulty gas channel.
+ * @param[in] view Input UI snapshot containing readings, thresholds and connection state.
+ * @return UI_SAFE, UI_WARNING or UI_DANGER.
+ */
 static UiState_t gas_state(const UiView_t *view) {
     if ((view->sensor_faults & SENSOR_FAULT_GAS) != 0U) {
         return UI_SAFE;
@@ -214,6 +301,11 @@ static UiState_t gas_state(const UiView_t *view) {
            (uint32_t)view->gas_threshold * UI_WARNING_PERCENT ? UI_WARNING : UI_SAFE;
 }
 
+/**
+ * @brief Choose the UI state from bus health, sample availability, freshness and valid sensor readings.
+ * @param[in] view Input UI snapshot containing readings, thresholds and connection state.
+ * @return Selected UiState_t value.
+ */
 static UiState_t state(const UiView_t *view) {
     if (view->bus_error) {
         return UI_BUS_ERROR;
@@ -233,6 +325,11 @@ static UiState_t state(const UiView_t *view) {
     return view->sensor_faults != 0U ? UI_SENSOR_ERROR : gas_state(view);
 }
 
+/**
+ * @brief Map a UI state to its RGB565 display color.
+ * @param[in] current UI state to map to a color.
+ * @return RGB565 color for the supplied UI state.
+ */
 static uint16_t state_color(UiState_t current) {
     static const uint16_t colors[] = {
         UI_CYAN, UI_AMBER, UI_RED, UI_MUTED, UI_MUTED, UI_AMBER, UI_AMBER
@@ -240,10 +337,21 @@ static uint16_t state_color(UiState_t current) {
     return colors[current];
 }
 
+/**
+ * @brief Check whether sample data is present, fresh and free of a bus fault.
+ * @param[in] view Input UI snapshot containing readings, thresholds and connection state.
+ * @return true if the current sample can be displayed as live data.
+ */
 static bool available(const UiView_t *view) {
     return view->has_data && !view->stale && !view->bus_error;
 }
 
+/**
+ * @brief Format a measured value and suffix, substituting dashes when unavailable.
+ * @param[in] value Value to append to the UI label.
+ * @param[in] present true to format the value; false to show two dashes.
+ * @param[in] suffix Null-terminated unit text appended after the value.
+ */
 static void value_label(uint16_t value, bool present, const char *suffix) {
     set_label("");
     if (present) {
@@ -254,6 +362,9 @@ static void value_label(uint16_t value, bool present, const char *suffix) {
     append(suffix);
 }
 
+/**
+ * @brief Compose the gas gauge, status indicators, temperature and humidity scene.
+ */
 static void main_scene(void) {
     static const char *const words[] = {"SAFE", "WARNING", "DANGER", "OFFLINE", "WAITING"};
     static const uint8_t *const fans[] = {
@@ -336,6 +447,9 @@ static void main_scene(void) {
     text(120U - text_width(&ui_font_value, label), 139U, label, &ui_font_value, UI_INK);
 }
 
+/**
+ * @brief Compose the editable threshold settings scene and save-error indication.
+ */
 static void settings_scene(void) {
     centered(9U, "SETTINGS", &ui_font_status, UI_INK);
     centered(24U, target.settings_save_error ? "SAVE FAILED" : "SAFETY LIMITS",
@@ -385,6 +499,9 @@ static void settings_scene(void) {
     }
 }
 
+/**
+ * @brief Compose the CAN bus error screen.
+ */
 static void bus_error_scene(void) {
     add(57U, 31U, 14U, 14U, ui_state_offline, UI_AMBER);
     centered(59U, "BUS ERROR", &ui_font_status, UI_AMBER);
@@ -393,6 +510,10 @@ static void bus_error_scene(void) {
     centered(113U, "CHECK BUS", &ui_font_label, UI_MUTED);
 }
 
+/**
+ * @brief Rasterize the current drawing operations into one 8-by-8 RGB565 tile.
+ * @param[in] tile Zero-based 8-by-8 tile index within the screen.
+ */
 static void compose_tile(uint16_t tile) {
     uint8_t x = (tile % UI_TILE_COLUMNS) * UI_TILE_SIZE;
     uint8_t y = (tile / UI_TILE_COLUMNS) * UI_TILE_SIZE;
@@ -419,16 +540,30 @@ static void compose_tile(uint16_t tile) {
     }
 }
 
+/**
+ * @brief Copy one rasterized tile row into the TFT painter output buffer.
+ * @param[in] row Zero-based row index within the current tile or requested rectangle.
+ * @param[out] pixels Output RGB565 row buffer supplied by the TFT driver.
+ */
 static void tile_row(uint8_t row, uint16_t *pixels) {
     for (uint8_t col = 0U; col < UI_TILE_SIZE; col++) {
         pixels[col] = tile_pixels[row * UI_TILE_SIZE + col];
     }
 }
 
+/**
+ * @brief Combine one value with a rolling FNV-style hash.
+ * @param[in] hash Current rolling hash value.
+ * @param[in] value 32-bit value to combine with the hash.
+ * @return Updated 32-bit hash.
+ */
 static uint32_t hash_value(uint32_t hash, uint32_t value) {
     return (hash ^ value) * UI_HASH_PRIME;
 }
 
+/**
+ * @brief Hash scene tiles and transmit at most 80 changed tiles per rendering step.
+ */
 static void stream_scene(void) {
     uint32_t hash = UI_HASH_OFFSET;
     for (uint16_t i = 0U; i < UI_TILE_COUNT; i++) {
@@ -483,6 +618,9 @@ static void stream_scene(void) {
     }
 }
 
+/**
+ * @brief Reset rendering, startup animation, filtering and tile-cache state.
+ */
 void app_ui_reset(void) {
     valid = false;
     clock_started = false;
@@ -499,6 +637,10 @@ void app_ui_reset(void) {
     }
 }
 
+/**
+ * @brief Store the target view and update the display-only gas smoothing filter without drawing.
+ * @param[in] view Input UI snapshot containing readings, thresholds and connection state.
+ */
 void app_ui_render(const UiView_t *view) {
     if (view != NULL) {
         bool live = available(view) && (view->sensor_faults & SENSOR_FAULT_GAS) == 0U;
@@ -529,6 +671,10 @@ void app_ui_render(const UiView_t *view) {
     }
 }
 
+/**
+ * @brief Advance startup, blinking, fan and transition animations and render changed tiles.
+ * @param[in] now_ms Current monotonic time in milliseconds; unsigned subtraction handles wraparound.
+ */
 void app_ui_tick(uint32_t now_ms) {
     if (!valid || !hal_tft_ok()) {
         return;
@@ -579,6 +725,11 @@ void app_ui_tick(uint32_t now_ms) {
     stream_scene();
 }
 
+/**
+ * @brief Apply a UI button to draft settings and edit mode; persistence is handled by the actuator task.
+ * @param[in,out] view Input/output UI state; button actions modify draft thresholds or edit mode.
+ * @param[in] button UI button event to apply.
+ */
 void app_ui_button(UiView_t *view, UiButton_t button) {
     if (view == NULL) {
         return;
@@ -629,27 +780,52 @@ void app_ui_button(UiView_t *view, UiButton_t button) {
 }
 
 #ifdef UI_PREVIEW
+/**
+ * @brief Expose the filtered numeric gas percentage for host previews.
+ * @return Filtered numeric gas percentage.
+ */
 uint16_t app_ui_preview_gas(void) {
     return display_gas;
 }
 
+/**
+ * @brief Expose the clamped animated gauge percentage for host previews.
+ * @return Gauge percentage clamped to 150.
+ */
 uint16_t app_ui_preview_gauge(void) {
     return gauge_percent();
 }
 
+/**
+ * @brief Expose the percentage associated with a gauge arc segment for host previews.
+ * @param[in] segment Zero-based gauge arc index; must be less than UI_ARC_COUNT.
+ * @return Percentage at the selected arc segment.
+ */
 uint8_t app_ui_preview_arc_percent(uint8_t segment) {
     return arc_percent(segment);
 }
 
+/**
+ * @brief Expose a composed gauge arc color for host previews.
+ * @param[in] segment Zero-based gauge arc index; must be less than UI_ARC_COUNT.
+ * @return RGB565 color of the selected segment.
+ */
 uint16_t app_ui_preview_arc_color(uint8_t segment) {
     assert(segment < UI_ARC_COUNT);
     return ops[4U + segment].color;
 }
 
+/**
+ * @brief Expose the target UI state for host previews.
+ * @return Current UiState_t value encoded as uint8_t.
+ */
 uint8_t app_ui_preview_state(void) {
     return (uint8_t)state(&target);
 }
 
+/**
+ * @brief Invalidate all cached tile hashes so the host preview redraws the scene.
+ */
 void app_ui_preview_redraw(void) {
     for (uint8_t i = 0U; i < sizeof(tile_valid); i++) {
         tile_valid[i] = 0U;
