@@ -22,8 +22,14 @@ typedef struct {
     uint32_t received_ms;
 } SensorData_t;
 
+typedef struct {
+    uint32_t received_ms;
+    bool wants_call;
+} AlarmState_t;
+
 extern QueueHandle_t xSensorQueue;
 extern QueueHandle_t xThresholdQueue;
+extern QueueHandle_t xAlarmQueue;
 
 /**
  * @brief Create the FreeRTOS queues used to exchange application data.

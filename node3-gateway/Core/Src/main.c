@@ -13,7 +13,8 @@
 /* USER CODE BEGIN Includes */
 #include "app_ipc.h"
 #include "bsp_board.h"
-#include "task_comm.h"
+#include "task_alarm.h"
+#include "task_modem.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -137,7 +138,7 @@ int main(void)
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
-    if (task_comm_create() != pdPASS) {
+    if (task_alarm_create() != pdPASS || task_modem_create() != pdPASS) {
         bsp_board_fail(BOARD_ERR_TASK);
     }
   /* USER CODE END RTOS_THREADS */
