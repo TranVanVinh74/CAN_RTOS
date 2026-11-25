@@ -26,6 +26,39 @@ static void start_can(void) {
     }
 }
 
+/* Samples for an earlier request_id arrived late and are discarded until this one or timeout. */
+static bool receive_mq5(uint32_t request_id, Mq5Sample_t *sample) {
+    TimeOut_t timeout;
+    TickType_t remaining = pdMS_TO_TICKS(SENSOR_RESULT_TIMEOUT_MS);
+
+    vTaskSetTimeOutState(&timeout);
+    while (xQueueReceive(xMq5Queue, sample, remaining) == pdPASS) {
+        if (sample->request_id == request_id) {
+            return true;
+        }
+        if (xTaskCheckForTimeOut(&timeout, &remaining) != pdFALSE) {
+            break;
+        }
+    }
+    return false;
+}
+
+static bool receive_dht11(uint32_t request_id, Dht11Sample_t *sample) {
+    TimeOut_t timeout;
+    TickType_t remaining = pdMS_TO_TICKS(SENSOR_RESULT_TIMEOUT_MS);
+
+    vTaskSetTimeOutState(&timeout);
+    while (xQueueReceive(xDht11Queue, sample, remaining) == pdPASS) {
+        if (sample->request_id == request_id) {
+            return true;
+        }
+        if (xTaskCheckForTimeOut(&timeout, &remaining) != pdFALSE) {
+            break;
+        }
+    }
+    return false;
+}
+
 /**
  * @brief Request both samples once per cycle, then pack and transmit the paired results.
  * @param[in] pvParameters Unused task argument; task creation passes NULL.
@@ -35,17 +68,23 @@ static void prvCanTxTask(void *pvParameters) {
 
     start_can();
     TickType_t last_wake = xTaskGetTickCount();
+    uint32_t request_id = 0U;
 
     for (;;) {
         Mq5Sample_t mq5;
         Dht11Sample_t dht11;
         uint8_t payload[CAN_DLC_SENSOR];
 
-        /* A cycle collects both results, including failed reads, before requesting more. */
-        task_mq5_request();
-        task_dht11_request();
-        (void)xQueueReceive(xMq5Queue, &mq5, portMAX_DELAY);
-        (void)xQueueReceive(xDht11Queue, &dht11, portMAX_DELAY);
+        request_id++;
+        task_mq5_request(request_id);
+        task_dht11_request(request_id);
+        /* A stuck sensor task is reported as a channel fault instead of stopping 0x100. */
+        if (!receive_mq5(request_id, &mq5)) {
+            mq5 = (Mq5Sample_t){0};
+        }
+        if (!receive_dht11(request_id, &dht11)) {
+            dht11 = (Dht11Sample_t){0};
+        }
 
         uint8_t faults = (mq5.valid ? 0U : SENSOR_FAULT_GAS) |
                          (dht11.valid ? 0U : SENSOR_FAULT_DHT);
@@ -61,5 +100,6 @@ static void prvCanTxTask(void *pvParameters) {
  * @return pdPASS on successful task creation; otherwise the FreeRTOS allocation error.
  */
 BaseType_t task_can_tx_create(void) {
-    return xTaskCreate(prvCanTxTask, "CAN_TX", TASK_CAN_TX_STACK_WORDS, NULL, TASK_CAN_TX_PRIO, NULL);
+    return xTaskCreate(prvCanTxTask, "CAN_TX", TASK_CAN_TX_STACK_WORDS, NULL, TASK_CAN_TX_PRIO,
+                       NULL);
 }

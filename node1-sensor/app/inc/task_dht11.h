@@ -6,6 +6,8 @@
 #ifndef TASK_DHT11_H
 #define TASK_DHT11_H
 
+#include <stdint.h>
+
 #include "FreeRTOS.h"
 
 /**
@@ -16,7 +18,8 @@ BaseType_t task_dht11_create(void);
 
 /**
  * @brief Request one DHT11 sample from CAN_TX after the task has been created.
+ * @param[in] request_id Identifier copied into the resulting sample.
  */
-void task_dht11_request(void);
+void task_dht11_request(uint32_t request_id);
 
 #endif

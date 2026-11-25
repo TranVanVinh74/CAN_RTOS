@@ -12,13 +12,16 @@
 #include "FreeRTOS.h"
 #include "queue.h"
 
+/* request_id echoes the CAN_TX request so a late sample is never paired with a newer cycle. */
 typedef struct {
+    uint32_t request_id;
     uint8_t temperature_c;
     uint8_t humidity_pct;
     bool valid;
 } Dht11Sample_t;
 
 typedef struct {
+    uint32_t request_id;
     uint16_t gas_raw;
     bool valid;
 } Mq5Sample_t;

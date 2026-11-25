@@ -21,10 +21,14 @@ static void prvMq5Task(void *pvParameters) {
     (void)pvParameters;
 
     for (;;) {
-        (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        Mq5Sample_t sample;
+        uint32_t request_id;
+        if (xTaskNotifyWait(0U, 0U, &request_id, pdMS_TO_TICKS(SENSOR_REQUEST_WAIT_MS)) != pdTRUE) {
+            continue;
+        }
+        Mq5Sample_t sample = {.request_id = request_id};
         sample.valid = hal_mq5_read_average(TASK_MQ5_SAMPLES, &sample.gas_raw);
-        (void)xQueueSend(xMq5Queue, &sample, portMAX_DELAY);
+        /* A full queue means CAN_TX gave up on this cycle; the sample is dropped. */
+        (void)xQueueSend(xMq5Queue, &sample, pdMS_TO_TICKS(SENSOR_RESULT_TIMEOUT_MS));
     }
 }
 
@@ -33,6 +37,6 @@ BaseType_t task_mq5_create(void) {
                        &xMq5TaskHandle);
 }
 
-void task_mq5_request(void) {
-    (void)xTaskNotifyGive(xMq5TaskHandle);
+void task_mq5_request(uint32_t request_id) {
+    (void)xTaskNotify(xMq5TaskHandle, request_id, eSetValueWithOverwrite);
 }
