@@ -12,14 +12,22 @@
 #include "FreeRTOS.h"
 #include "queue.h"
 
+/* request_id echoes the CAN_TX request so a late sample is never paired with a newer cycle. */
 typedef struct {
+    uint32_t request_id;
     uint8_t temperature_c;
     uint8_t humidity_pct;
-    uint16_t gas_raw;
-    uint8_t sensor_faults;
-} SensorData_t;
+    bool valid;
+} Dht11Sample_t;
 
-extern QueueHandle_t xSensorQueue;
+typedef struct {
+    uint32_t request_id;
+    uint16_t gas_raw;
+    bool valid;
+} Mq5Sample_t;
+
+extern QueueHandle_t xDht11Queue;
+extern QueueHandle_t xMq5Queue;
 
 /**
  * @brief Create the FreeRTOS queues used to exchange application data.

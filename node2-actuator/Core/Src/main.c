@@ -14,6 +14,8 @@
 #include "app_ipc.h"
 #include "bsp_board.h"
 #include "task_actuator.h"
+#include "task_buttons.h"
+#include "task_ui.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -133,7 +135,8 @@ int main(void)
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
-    if (task_actuator_create() != pdPASS) {
+    if (task_actuator_create() != pdPASS || task_buttons_create() != pdPASS ||
+        task_ui_create() != pdPASS) {
         bsp_board_fail(BOARD_ERR_TASK);
     }
   /* USER CODE END RTOS_THREADS */

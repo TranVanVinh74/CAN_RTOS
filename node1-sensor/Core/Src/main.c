@@ -25,7 +25,8 @@
 #include "app_ipc.h"
 #include "bsp_board.h"
 #include "task_can_tx.h"
-#include "task_sensor.h"
+#include "task_dht11.h"
+#include "task_mq5.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -153,10 +154,8 @@ int main(void)
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
-    if (task_sensor_create() != pdPASS) {
-        bsp_board_fail(BOARD_ERR_TASK);
-    }
-    if (task_can_tx_create() != pdPASS) {
+    if (task_dht11_create() != pdPASS || task_mq5_create() != pdPASS ||
+        task_can_tx_create() != pdPASS) {
         bsp_board_fail(BOARD_ERR_TASK);
     }
   /* USER CODE END RTOS_THREADS */

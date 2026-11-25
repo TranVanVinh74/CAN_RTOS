@@ -10,13 +10,18 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/*
+ * Widest usable ranges: each minimum keeps its switch-off level (limit - hysteresis) above 0,
+ * otherwise the alarm could never clear; 4050 is the last gas step within the 12-bit ADC and
+ * 50 C is the DHT11 measuring limit.
+ */
 #define ALERT_GAS_DEFAULT_RAW 2000U
-#define ALERT_GAS_MIN_RAW 500U
-#define ALERT_GAS_MAX_RAW 3800U
+#define ALERT_GAS_MIN_RAW 250U
+#define ALERT_GAS_MAX_RAW 4050U
 #define ALERT_GAS_STEP_RAW 50U
 #define ALERT_GAS_HYSTERESIS_RAW 200U
 #define ALERT_TEMPERATURE_DEFAULT_C 40U
-#define ALERT_TEMPERATURE_MIN_C 30U
+#define ALERT_TEMPERATURE_MIN_C 3U
 #define ALERT_TEMPERATURE_MAX_C 50U
 #define ALERT_TEMPERATURE_STEP_C 1U
 #define ALERT_TEMPERATURE_HYSTERESIS_C 2U

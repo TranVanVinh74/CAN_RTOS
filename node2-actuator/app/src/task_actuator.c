@@ -1,6 +1,6 @@
 /**
  * @file task_actuator.c
- * @brief CAN sensor consumption, relay control, buttons and UI servicing.
+ * @brief CAN sensor consumption, relay control, threshold settings and UI snapshots.
  */
 
 #include "task_actuator.h"
@@ -21,23 +21,22 @@
 #include "hal_relay.h"
 #include "sensor_status.h"
 
-static TaskHandle_t xActuatorTaskHandle = NULL;
+static TaskHandle_t xControlTaskHandle = NULL;
 
 /**
  * @brief Apply debounced button events, persist SAVE changes and update active settings.
  * @param[in,out] view Input/output UI state, including draft thresholds and save errors.
  * @param[in,out] active Input/output thresholds applied to control; updated after a successful save.
- * @param[in] now_ms Current monotonic time in milliseconds; unsigned subtraction handles wraparound.
+ * @param[in] events Debounced presses from one button scan.
  * @return true if a successful save changed the active thresholds; otherwise false.
  */
-static bool process_buttons(UiView_t *view, AlertThresholds_t *active, uint32_t now_ms) {
+static bool process_buttons(UiView_t *view, AlertThresholds_t *active, uint8_t events) {
     static const UiButton_t ui_buttons[BUTTON_COUNT] = {
         [BUTTON_SELECT] = UI_BUTTON_SELECT,
         [BUTTON_PLUS] = UI_BUTTON_PLUS,
         [BUTTON_MINUS] = UI_BUTTON_MINUS,
         [BUTTON_SAVE] = UI_BUTTON_SAVE,
     };
-    uint8_t events = hal_buttons_poll(now_ms);
     bool changed = false;
 
     for (uint8_t i = 0U; i < BUTTON_COUNT; i++) {
@@ -95,7 +94,9 @@ static void on_can_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
     }
 
     /* A full queue drops this sample; the next one arrives 500 ms later. */
-    (void)xQueueSendFromISR(xSensorQueue, &sample, task_woken);
+    if (xQueueSendFromISR(xSensorQueue, &sample, task_woken) == pdPASS) {
+        vTaskNotifyGiveFromISR(xControlTaskHandle, task_woken);
+    }
 }
 
 /* Without CAN, Node2 keeps running so the screen can show BUS ERROR. */
@@ -113,10 +114,21 @@ static bool start_can(void) {
 }
 
 /**
- * @brief Process sensor frames, control the fan, scan buttons and service the display and threshold synchronization.
+ * @brief Apply the alert policy to the current reading and update the relay and view.
+ * @param[in,out] view Current sensor reading, faults and rendered fan state.
+ * @param[in] settings Active gas and temperature thresholds.
+ */
+static void update_relay(UiView_t *view, const AlertThresholds_t *settings) {
+    hal_relay_set(sensor_fan_should_run(hal_relay_is_on(), view->gas_raw,
+                                       view->temperature_c, view->sensor_faults, settings));
+    view->fan_on = hal_relay_is_on();
+}
+
+/**
+ * @brief Service sensor and button queues, update the relay and publish thresholds and UI state.
  * @param[in] pvParameters Unused task argument; task creation passes NULL.
  */
-static void prvActuatorTask(void *pvParameters) {
+static void prvControlTask(void *pvParameters) {
     (void)pvParameters;
 
     AlertThresholds_t settings;
@@ -129,27 +141,11 @@ static void prvActuatorTask(void *pvParameters) {
     app_threshold_sync_init();
     TickType_t last_sensor_tick = 0;
 
-    app_ui_reset();
-    app_ui_update(&view);
-    for (uint8_t frame = 0U; frame < UI_BOOT_LAYOUT_FRAMES; frame++) {
-        app_ui_draw(app_time_ms());
-        vTaskDelay(pdMS_TO_TICKS(UI_FRAME_MS));
-    }
     bool can_started = start_can();
-    TickType_t last_button_tick = xTaskGetTickCount();
-    TickType_t last_ui_tick = last_button_tick;
 
     for (;;) {
         SensorData_t sample;
-        TickType_t elapsed = xTaskGetTickCount() - last_button_tick;
-        TickType_t wait_ticks = elapsed < pdMS_TO_TICKS(BUTTON_SCAN_MS) ?
-                                pdMS_TO_TICKS(BUTTON_SCAN_MS) - elapsed : 0U;
-
-        if (xQueueReceive(xSensorQueue, &sample, wait_ticks) == pdPASS) {
-            hal_relay_set(sensor_fan_should_run(hal_relay_is_on(), sample.gas_raw,
-                                                sample.temperature_c, sample.sensor_faults,
-                                                &settings));
-
+        while (xQueueReceive(xSensorQueue, &sample, 0U) == pdPASS) {
             last_sensor_tick = xTaskGetTickCount();
             view.sample_id++;
             view.has_data = true;
@@ -157,20 +153,16 @@ static void prvActuatorTask(void *pvParameters) {
             view.humidity_pct = sample.humidity_pct;
             view.gas_raw = sample.gas_raw;
             view.sensor_faults = sample.sensor_faults;
-            view.fan_on = hal_relay_is_on();
+            update_relay(&view, &settings);
         }
 
-        TickType_t now = xTaskGetTickCount();
-        if ((TickType_t)(now - last_button_tick) >= pdMS_TO_TICKS(BUTTON_SCAN_MS)) {
-            last_button_tick = now;
-            bool changed = process_buttons(&view, &settings, app_time_ms());
+        uint8_t events;
+        while (xQueueReceive(xButtonQueue, &events, 0U) == pdPASS) {
+            bool changed = process_buttons(&view, &settings, events);
             if (changed && view.has_data &&
-                ((TickType_t)(now - last_sensor_tick) <=
+                ((TickType_t)(xTaskGetTickCount() - last_sensor_tick) <=
                  pdMS_TO_TICKS(SENSOR_FRESH_TIMEOUT_MS))) {
-                hal_relay_set(sensor_fan_should_run(hal_relay_is_on(), view.gas_raw,
-                                                    view.temperature_c, view.sensor_faults,
-                                                    &settings));
-                view.fan_on = hal_relay_is_on();
+                update_relay(&view, &settings);
             }
         }
 
@@ -179,23 +171,29 @@ static void prvActuatorTask(void *pvParameters) {
         }
 
         view.stale = view.has_data &&
-                     ((TickType_t)(now - last_sensor_tick) >=
+                     ((TickType_t)(xTaskGetTickCount() - last_sensor_tick) >=
                       pdMS_TO_TICKS(SENSOR_FRESH_TIMEOUT_MS));
         view.bus_error = !can_started || hal_can_bus_fault();
-        if ((TickType_t)(now - last_ui_tick) >= pdMS_TO_TICKS(UI_FRAME_MS)) {
-            last_ui_tick = now;
-            app_ui_update(&view);
-            app_ui_draw(app_time_ms());
-        }
+        (void)xQueueOverwrite(xUiQueue, &view);
+
+        /* A notification wakes CONTROL for queued data; the timeout services periodic CAN work. */
+        (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(CONTROL_POLL_MS));
     }
 }
 
 /**
- * @brief Register the CAN receive callback and create the ACTUATOR task.
+ * @brief Register the CAN receive callback and create the CONTROL task.
  * @return pdPASS on successful task creation; otherwise the FreeRTOS allocation error.
  */
 BaseType_t task_actuator_create(void) {
     hal_can_set_rx_handler(on_can_frame);
-    return xTaskCreate(prvActuatorTask, "ACTUATOR", TASK_ACTUATOR_STACK_WORDS, NULL,
-                       TASK_ACTUATOR_PRIO, &xActuatorTaskHandle);
+    return xTaskCreate(prvControlTask, "CONTROL", TASK_CONTROL_STACK_WORDS, NULL,
+                       TASK_CONTROL_PRIO, &xControlTaskHandle);
+}
+
+void task_actuator_post_buttons(uint8_t events) {
+    /* A full queue means CONTROL is stalled; the press is dropped so BUTTONS keeps scanning. */
+    if (xQueueSend(xButtonQueue, &events, pdMS_TO_TICKS(BUTTON_QUEUE_TIMEOUT_MS)) == pdPASS) {
+        (void)xTaskNotifyGive(xControlTaskHandle);
+    }
 }

@@ -772,7 +772,7 @@ void app_ui_draw(uint32_t now_ms) {
 }
 
 /**
- * @brief Apply a UI button to draft settings and edit mode; persistence is handled by the actuator task.
+ * @brief Apply a button to draft settings and edit mode in the supplied view only.
  * @param[in,out] view Input/output UI state; button actions modify draft thresholds or edit mode.
  * @param[in] button UI button event to apply.
  */
@@ -819,5 +819,4 @@ void app_ui_button(UiView_t *view, UiButton_t button) {
                  temperature - ALERT_TEMPERATURE_STEP_C : ALERT_TEMPERATURE_MIN_C);
         }
     }
-    app_ui_update(view);
 }
