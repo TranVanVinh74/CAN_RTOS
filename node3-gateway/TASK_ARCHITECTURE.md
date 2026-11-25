@@ -27,7 +27,7 @@ parse chuỗi AT.
 - Ghi trạng thái mới nhất vào `xAlarmQueue`.
 - Hoạt động theo chu kỳ 10 ms hoặc được đánh thức từ CAN ISR.
 
-Task này giữ nguyên logic và giao diện IPC trước đây.
+Logic cảnh báo và hysteresis giữ như trước khi tách task.
 
 ### CALL
 
@@ -40,7 +40,13 @@ Task này giữ nguyên logic và giao diện IPC trước đây.
 - Kiểm tra lại AT mỗi 2 giây khi modem chưa sẵn sàng.
 - Chỉ gọi khi cảnh báo còn hiệu lực, mẫu chưa quá hạn 3 giây, modem sẵn sàng
   và đã hết khoảng cách tối thiểu 60 giây giữa hai lần gọi.
-- Ngắt cuộc gọi khi cảnh báo hết hiệu lực hoặc sau tối đa 30 giây.
+- Ngắt cuộc gọi khi cảnh báo hết hiệu lực hoặc sau tối đa 30 giây, tính từ lúc gửi ATD.
+- ATD không nhận được phản hồi trong 5 giây vẫn được coi là có thể đang gọi: giới hạn
+  30 giây và ATH vẫn áp dụng. ATD trả `ERROR` hoặc gửi UART lỗi thì gửi ATH ngay.
+- Modem báo `ERROR` không kèm lệnh nào trong lúc đang gọi thì gửi ATH.
+- Modem reset (`RDY`, `*ATREADY`, `+CPIN: READY`) thì quay về chờ boot 3 giây.
+- Nếu không nhận được event kết thúc của lệnh sau timeout của lệnh cộng thêm 1 giây,
+  `CALL` coi lệnh đó là timeout, không chờ mãi.
 
 ### MODEM_AT
 
@@ -50,7 +56,12 @@ Task này giữ nguyên logic và giao diện IPC trước đây.
 - Gửi từng lệnh AT theo cơ chế một lệnh đang chờ tại một thời điểm.
 - Đọc byte từ ring buffer do USART2 ISR cấp dữ liệu.
 - Parse `OK`, `ERROR`, `NO CARRIER`, `BUSY`, `NO ANSWER` và tín hiệu modem reset.
-- Gửi `ModemEvent_t` lên `xModemEventQueue`.
+- Gửi `ModemEvent_t` lên `xModemEventQueue`. Phản hồi nhận được khi không có lệnh nào
+  đang chờ được gắn `AT_CMD_NONE`, để `CALL` không ghép nhầm vào lệnh khác.
+- Phân loại hết byte đã nhận trước khi gửi lệnh mới; khi gửi lệnh mới chỉ bỏ các dòng
+  đã trọn vẹn, nên một `OK` cũ không khớp nhầm cho lệnh mới.
+- Trong 3 giây sau khi thấy modem reset, bỏ mọi lệnh trong `xAtCmdQueue`: các lệnh này
+  được gửi trước khi `CALL` biết modem reset, nếu chạy sẽ không được theo dõi.
 - Được đánh thức bởi notification từ USART2 ISR hoặc timeout polling ngắn
   khoảng 20 ms để kiểm tra lệnh mới và timeout lệnh.
 
@@ -61,7 +72,8 @@ Task này giữ nguyên logic và giao diện IPC trước đây.
 Hướng truyền: `CALL -> MODEM_AT`.
 
 Mỗi phần tử gồm loại lệnh, timeout và chuỗi lệnh AT. Các loại hiện tại là:
-`AT_CMD_CHECK`, `AT_CMD_DIAL`, `AT_CMD_HANGUP`.
+`AT_CMD_CHECK`, `AT_CMD_DIAL`, `AT_CMD_HANGUP`. `AT_CMD_NONE` chỉ xuất hiện trong
+event, đánh dấu phản hồi không thuộc lệnh nào.
 
 ### `xModemEventQueue`
 
@@ -72,7 +84,7 @@ Mỗi phần tử gồm loại sự kiện và loại lệnh liên quan. Các s�
 
 ## 5. Tệp chính
 
-- `app/src/task_alarm.c`: task cảnh báo, giữ nguyên.
+- `app/src/task_alarm.c`: task cảnh báo.
 - `app/src/task_call.c`: state machine và chính sách gọi.
 - `app/src/task_modem_at.c`: thực thi lệnh AT và parse USART2.
 - `app/src/app_ipc.c`: tạo các queue ứng dụng.

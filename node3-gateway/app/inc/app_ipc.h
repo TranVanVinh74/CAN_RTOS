@@ -32,7 +32,8 @@ typedef struct {
 typedef enum {
     AT_CMD_CHECK = 0,
     AT_CMD_DIAL,
-    AT_CMD_HANGUP
+    AT_CMD_HANGUP,
+    AT_CMD_NONE
 } AtCommandType_t;
 
 typedef struct {
@@ -50,6 +51,7 @@ typedef enum {
     MODEM_EVENT_TX_FAILED
 } ModemEventType_t;
 
+/* command is AT_CMD_NONE for unsolicited modem output received while no command was pending. */
 typedef struct {
     ModemEventType_t type;
     AtCommandType_t command;

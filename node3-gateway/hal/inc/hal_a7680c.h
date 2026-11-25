@@ -32,10 +32,6 @@ bool hal_a7680c_send(const char *text);
  */
 bool hal_a7680c_read_byte(uint8_t *byte);
 /**
- * @brief Discard all bytes currently buffered from the modem.
- */
-void hal_a7680c_drain(void);
-/**
  * @brief Read UART receive/error flags and buffer incoming bytes.
  * @note Bytes are dropped while the ring is full.
  */
