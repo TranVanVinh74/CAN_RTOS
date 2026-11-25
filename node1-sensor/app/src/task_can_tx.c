@@ -5,6 +5,8 @@
 
 #include "task_can_tx.h"
 
+#include <string.h>
+
 #include "task.h"
 
 #include "app_cfg.h"
@@ -26,37 +28,25 @@ static void start_can(void) {
     }
 }
 
-/* Samples for an earlier request_id arrived late and are discarded until this one or timeout. */
-static bool receive_mq5(uint32_t request_id, Mq5Sample_t *sample) {
+/*
+ * Samples for an earlier request_id arrived late and are discarded until this one or timeout.
+ * A missing sample is zeroed, so its valid flag reports a channel fault.
+ */
+static void receive_sample(QueueHandle_t queue, void *sample, size_t size,
+                           const uint32_t *sample_id, uint32_t request_id) {
     TimeOut_t timeout;
     TickType_t remaining = pdMS_TO_TICKS(SENSOR_RESULT_TIMEOUT_MS);
 
     vTaskSetTimeOutState(&timeout);
-    while (xQueueReceive(xMq5Queue, sample, remaining) == pdPASS) {
-        if (sample->request_id == request_id) {
-            return true;
+    while (xQueueReceive(queue, sample, remaining) == pdPASS) {
+        if (*sample_id == request_id) {
+            return;
         }
         if (xTaskCheckForTimeOut(&timeout, &remaining) != pdFALSE) {
             break;
         }
     }
-    return false;
-}
-
-static bool receive_dht11(uint32_t request_id, Dht11Sample_t *sample) {
-    TimeOut_t timeout;
-    TickType_t remaining = pdMS_TO_TICKS(SENSOR_RESULT_TIMEOUT_MS);
-
-    vTaskSetTimeOutState(&timeout);
-    while (xQueueReceive(xDht11Queue, sample, remaining) == pdPASS) {
-        if (sample->request_id == request_id) {
-            return true;
-        }
-        if (xTaskCheckForTimeOut(&timeout, &remaining) != pdFALSE) {
-            break;
-        }
-    }
-    return false;
+    memset(sample, 0, size);
 }
 
 /**
@@ -79,12 +69,8 @@ static void prvCanTxTask(void *pvParameters) {
         task_mq5_request(request_id);
         task_dht11_request(request_id);
         /* A stuck sensor task is reported as a channel fault instead of stopping 0x100. */
-        if (!receive_mq5(request_id, &mq5)) {
-            mq5 = (Mq5Sample_t){0};
-        }
-        if (!receive_dht11(request_id, &dht11)) {
-            dht11 = (Dht11Sample_t){0};
-        }
+        receive_sample(xMq5Queue, &mq5, sizeof(mq5), &mq5.request_id, request_id);
+        receive_sample(xDht11Queue, &dht11, sizeof(dht11), &dht11.request_id, request_id);
 
         uint8_t faults = (mq5.valid ? 0U : SENSOR_FAULT_GAS) |
                          (dht11.valid ? 0U : SENSOR_FAULT_DHT);

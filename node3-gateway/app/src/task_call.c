@@ -24,8 +24,7 @@ typedef struct {
     TickType_t boot_started;
     TickType_t last_at_check;
     TickType_t last_idle_check;
-    TickType_t call_started;
-    TickType_t last_call;
+    TickType_t dial_started;
     bool call_attempted;
     bool command_pending;
     AtCommandType_t pending_command;
@@ -56,7 +55,6 @@ static bool enqueue_command(CallContext_t *ctx, AtCommandType_t type, const char
 
 static void retry_at_check(CallContext_t *ctx, TickType_t now) {
     ctx->state = CALL_WAIT_AT;
-    ctx->hangup_requested = false;
     ctx->last_at_check = now - pdMS_TO_TICKS(MODEM_AT_RETRY_MS);
 }
 
@@ -68,7 +66,6 @@ static void on_command_ok(CallContext_t *ctx, AtCommandType_t command, TickType_
         ctx->state = CALL_IN_PROGRESS;
     } else if (command == AT_CMD_HANGUP) {
         ctx->state = CALL_READY;
-        ctx->hangup_requested = false;
     }
 }
 
@@ -92,7 +89,6 @@ static void handle_event(CallContext_t *ctx, const ModemEvent_t *event, TickType
         ctx->state = CALL_BOOT_WAIT;
         ctx->boot_started = now;
         ctx->command_pending = false;
-        ctx->hangup_requested = false;
         return;
     }
 
@@ -105,7 +101,6 @@ static void handle_event(CallContext_t *ctx, const ModemEvent_t *event, TickType
     if (event->type == MODEM_EVENT_CALL_ENDED) {
         if ((ctx->state == CALL_IN_PROGRESS) || (completes && (command != AT_CMD_CHECK))) {
             ctx->state = CALL_READY;
-            ctx->hangup_requested = false;
         } else if (completes) {
             retry_at_check(ctx, now);
         }
@@ -167,23 +162,22 @@ static void prvCallTask(void *argument) {
                 }
             }
             if (!ctx.command_pending && alarm_wants_call() &&
-                (!ctx.call_attempted || (now - ctx.last_call) >= pdMS_TO_TICKS(CALL_INTERVAL_MS))) {
+                (!ctx.call_attempted ||
+                 (now - ctx.dial_started) >= pdMS_TO_TICKS(CALL_INTERVAL_MS))) {
                 char command[AT_COMMAND_TEXT_LEN];
                 (void)snprintf(command, sizeof(command), "ATD%s;\r\n", APP_ALERT_PHONE);
                 if (enqueue_command(&ctx, AT_CMD_DIAL, command, MODEM_DIAL_TIMEOUT_MS)) {
                     ctx.call_attempted = true;
-                    ctx.last_call = now;
                     /* The 30 s cap counts from dialing, not from the OK that may never come. */
-                    ctx.call_started = now;
+                    ctx.dial_started = now;
+                    ctx.hangup_requested = false;
                 }
             }
         } else if (ctx.state == CALL_IN_PROGRESS) {
             if (!ctx.command_pending &&
                 (ctx.hangup_requested || !alarm_wants_call() ||
-                 (now - ctx.call_started) >= pdMS_TO_TICKS(CALL_DURATION_MS))) {
-                if (enqueue_command(&ctx, AT_CMD_HANGUP, "ATH\r\n", MODEM_COMMAND_TIMEOUT_MS)) {
-                    ctx.hangup_requested = false;
-                }
+                 (now - ctx.dial_started) >= pdMS_TO_TICKS(CALL_DURATION_MS))) {
+                (void)enqueue_command(&ctx, AT_CMD_HANGUP, "ATH\r\n", MODEM_COMMAND_TIMEOUT_MS);
             }
         }
 
