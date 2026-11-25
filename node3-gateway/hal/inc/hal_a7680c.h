@@ -42,4 +42,6 @@ bool hal_a7680c_is_ready(void);
  */
 void hal_a7680c_irq_handler(void);
 
+void hal_a7680c_set_rx_task(void *task);
+
 #endif

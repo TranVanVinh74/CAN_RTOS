@@ -10,6 +10,8 @@
 QueueHandle_t xSensorQueue = NULL;
 QueueHandle_t xThresholdQueue = NULL;
 QueueHandle_t xAlarmQueue = NULL;
+QueueHandle_t xAtCmdQueue = NULL;
+QueueHandle_t xModemEventQueue = NULL;
 
 /**
  * @brief Create the FreeRTOS queues used to exchange application data.
@@ -19,5 +21,8 @@ bool app_ipc_init(void) {
     xSensorQueue = xQueueCreate(SENSOR_QUEUE_LENGTH, sizeof(SensorData_t));
     xThresholdQueue = xQueueCreate(THRESHOLD_QUEUE_LENGTH, sizeof(AlertThresholds_t));
     xAlarmQueue = xQueueCreate(ALARM_QUEUE_LENGTH, sizeof(AlarmState_t));
-    return (xSensorQueue != NULL) && (xThresholdQueue != NULL) && (xAlarmQueue != NULL);
+    xAtCmdQueue = xQueueCreate(4U, sizeof(AtCommand_t));
+    xModemEventQueue = xQueueCreate(8U, sizeof(ModemEvent_t));
+    return (xSensorQueue != NULL) && (xThresholdQueue != NULL) && (xAlarmQueue != NULL) &&
+           (xAtCmdQueue != NULL) && (xModemEventQueue != NULL);
 }

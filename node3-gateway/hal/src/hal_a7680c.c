@@ -23,6 +23,7 @@ static UART_HandleTypeDef *modem_uart = NULL;
 static uint8_t rx_buffer[MODEM_RX_BUFFER_LEN];
 static volatile uint16_t rx_head = 0;
 static volatile uint16_t rx_tail = 0;
+static TaskHandle_t rx_task = NULL;
 
 /**
  * @brief Advance a modem receive ring-buffer index with wraparound.
@@ -82,6 +83,10 @@ void hal_a7680c_init(UART_HandleTypeDef *huart) {
     }
 
     __HAL_UART_ENABLE_IT(huart, UART_IT_RXNE);
+}
+
+void hal_a7680c_set_rx_task(void *task) {
+    rx_task = (TaskHandle_t)task;
 }
 
 /**
@@ -167,4 +172,10 @@ void hal_a7680c_irq_handler(void) {
 
     rx_buffer[head] = byte;
     rx_head = next;
+
+    if (rx_task != NULL) {
+        BaseType_t task_woken = pdFALSE;
+        vTaskNotifyGiveFromISR(rx_task, &task_woken);
+        portYIELD_FROM_ISR(task_woken);
+    }
 }
