@@ -21,8 +21,8 @@ bool app_ipc_init(void) {
     xSensorQueue = xQueueCreate(SENSOR_QUEUE_LENGTH, sizeof(SensorData_t));
     xThresholdQueue = xQueueCreate(THRESHOLD_QUEUE_LENGTH, sizeof(AlertThresholds_t));
     xAlarmQueue = xQueueCreate(ALARM_QUEUE_LENGTH, sizeof(AlarmState_t));
-    xAtCmdQueue = xQueueCreate(4U, sizeof(AtCommand_t));
-    xModemEventQueue = xQueueCreate(8U, sizeof(ModemEvent_t));
+    xAtCmdQueue = xQueueCreate(AT_CMD_QUEUE_LENGTH, sizeof(AtCommand_t));
+    xModemEventQueue = xQueueCreate(MODEM_EVENT_QUEUE_LENGTH, sizeof(ModemEvent_t));
     return (xSensorQueue != NULL) && (xThresholdQueue != NULL) && (xAlarmQueue != NULL) &&
            (xAtCmdQueue != NULL) && (xModemEventQueue != NULL);
 }

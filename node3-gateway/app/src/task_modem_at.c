@@ -14,7 +14,7 @@
 
 #define MODEM_REPLY_BUFFER_LEN 256U
 
-static TaskHandle_t modem_at_task_handle = NULL;
+static TaskHandle_t xModemAtTaskHandle = NULL;
 
 static void publish_event(ModemEventType_t type, AtCommandType_t command) {
     ModemEvent_t event = {.type = type, .command = command};
@@ -63,7 +63,7 @@ static void prvModemAtTask(void *argument) {
     TickType_t command_started = 0U;
     TickType_t pending_timeout = pdMS_TO_TICKS(MODEM_COMMAND_TIMEOUT_MS);
 
-    hal_a7680c_set_rx_task(modem_at_task_handle);
+    hal_a7680c_set_rx_task(xModemAtTaskHandle);
 
     for (;;) {
         (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(TASK_MODEM_AT_POLL_MS));
@@ -100,5 +100,5 @@ static void prvModemAtTask(void *argument) {
 
 BaseType_t task_modem_at_create(void) {
     return xTaskCreate(prvModemAtTask, "MODEM_AT", TASK_MODEM_AT_STACK_WORDS, NULL,
-                       TASK_MODEM_AT_PRIO, &modem_at_task_handle);
+                       TASK_MODEM_AT_PRIO, &xModemAtTaskHandle);
 }

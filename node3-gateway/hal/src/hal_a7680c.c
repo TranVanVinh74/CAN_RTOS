@@ -12,18 +12,13 @@
 #include "task.h"
 
 #define MODEM_TX_TIMEOUT_MS 1000U
-#define MODEM_AT_TIMEOUT_MS 1000U
-#define MODEM_AT_POLL_MS 10U
-#define MODEM_AT_REPLY_LEN 128U
 #define MODEM_RX_BUFFER_LEN 256U
-#define MODEM_CMD_AT "AT\r\n"
-#define MODEM_REPLY_OK "OK"
 
 static UART_HandleTypeDef *modem_uart = NULL;
 static uint8_t rx_buffer[MODEM_RX_BUFFER_LEN];
 static volatile uint16_t rx_head = 0;
 static volatile uint16_t rx_tail = 0;
-static TaskHandle_t rx_task = NULL;
+static TaskHandle_t volatile rx_task = NULL;
 
 /**
  * @brief Advance a modem receive ring-buffer index with wraparound.
@@ -32,41 +27,6 @@ static TaskHandle_t rx_task = NULL;
  */
 static uint16_t next_index(uint16_t index) {
     return (uint16_t)((index + 1U) % MODEM_RX_BUFFER_LEN);
-}
-
-/**
- * @brief Transmit a modem command and poll its receive buffer for an expected substring.
- * @param[in] command Null-terminated AT command including its line terminator.
- * @param[in] expected Null-terminated response substring to search for.
- * @param[in] timeout_ms Maximum response wait in milliseconds.
- * @return true if the expected response appears before timeout; false on transmit failure or timeout.
- */
-static bool send_and_wait(const char *command, const char *expected, uint32_t timeout_ms) {
-    char reply[MODEM_AT_REPLY_LEN] = {0};
-    uint16_t length = 0;
-
-    if (!hal_a7680c_send(command)) {
-        return false;
-    }
-
-    TickType_t start = xTaskGetTickCount();
-    while ((xTaskGetTickCount() - start) < pdMS_TO_TICKS(timeout_ms)) {
-        uint8_t ch;
-
-        while (hal_a7680c_read_byte(&ch)) {
-            if (length >= (sizeof(reply) - 1U)) {
-                memmove(reply, reply + 1, sizeof(reply) - 2U);
-                length = sizeof(reply) - 2U;
-            }
-            reply[length++] = (char)ch;
-            reply[length] = '\0';
-            if (strstr(reply, expected) != NULL) {
-                return true;
-            }
-        }
-        vTaskDelay(pdMS_TO_TICKS(MODEM_AT_POLL_MS));
-    }
-    return false;
 }
 
 /**
@@ -85,8 +45,12 @@ void hal_a7680c_init(UART_HandleTypeDef *huart) {
     __HAL_UART_ENABLE_IT(huart, UART_IT_RXNE);
 }
 
-void hal_a7680c_set_rx_task(void *task) {
-    rx_task = (TaskHandle_t)task;
+/**
+ * @brief Select the task notified from the receive ISR for every buffered byte.
+ * @param[in] task Single ring-buffer consumer task, or NULL to stop notifications.
+ */
+void hal_a7680c_set_rx_task(TaskHandle_t task) {
+    rx_task = task;
 }
 
 /**
@@ -128,18 +92,8 @@ void hal_a7680c_drain(void) {
 }
 
 /**
- * @brief Send AT and check for an OK response within one second.
- * @return true if AT receives OK; this does not verify SIM or network registration.
- */
-bool hal_a7680c_is_ready(void) {
-    if (modem_uart == NULL) {
-        return false;
-    }
-    return send_and_wait(MODEM_CMD_AT, MODEM_REPLY_OK, MODEM_AT_TIMEOUT_MS);
-}
-
-/**
- * @brief Read UART receive/error flags and buffer incoming bytes, dropping bytes when the ring is full.
+ * @brief Read UART receive/error flags and buffer incoming bytes.
+ * @note Bytes are dropped while the ring is full.
  */
 void hal_a7680c_irq_handler(void) {
     if (modem_uart == NULL) {
@@ -155,7 +109,7 @@ void hal_a7680c_irq_handler(void) {
 
     /*
      * Reading DR clears RXNE and ORE. The ring buffer has one producer (this ISR, writes
-     * rx_head) and one consumer (the COMM task, writes rx_tail).
+     * rx_head) and one consumer (the MODEM_AT task, writes rx_tail).
      */
     uint8_t byte = (uint8_t)uart->DR;
 

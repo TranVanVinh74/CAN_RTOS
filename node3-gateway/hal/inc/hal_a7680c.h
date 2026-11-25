@@ -9,6 +9,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "FreeRTOS.h"
+#include "task.h"
+
 #include "stm32f1xx_hal.h"
 
 /**
@@ -33,15 +36,14 @@ bool hal_a7680c_read_byte(uint8_t *byte);
  */
 void hal_a7680c_drain(void);
 /**
- * @brief Send AT and check for an OK response within one second.
- * @return true if AT receives OK; this does not verify SIM or network registration.
- */
-bool hal_a7680c_is_ready(void);
-/**
- * @brief Read UART receive/error flags and buffer incoming bytes, dropping bytes when the ring is full.
+ * @brief Read UART receive/error flags and buffer incoming bytes.
+ * @note Bytes are dropped while the ring is full.
  */
 void hal_a7680c_irq_handler(void);
-
-void hal_a7680c_set_rx_task(void *task);
+/**
+ * @brief Select the task notified from the receive ISR for every buffered byte.
+ * @param[in] task Single ring-buffer consumer task, or NULL to stop notifications.
+ */
+void hal_a7680c_set_rx_task(TaskHandle_t task);
 
 #endif

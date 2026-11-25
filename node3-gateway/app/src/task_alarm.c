@@ -57,7 +57,8 @@ static void on_threshold_frame(const CanRxFrame_t *frame, BaseType_t *task_woken
 }
 
 /**
- * @brief Validate sensor faults, timestamp arrival and overwrite the latest-sample queue from the ISR.
+ * @brief Validate sensor faults, timestamp arrival and overwrite the latest-sample queue.
+ * @note Runs in the CAN receive ISR.
  * @param[in] frame Input frame whose metadata was validated by on_can_frame.
  * @param[in,out] task_woken Shared FreeRTOS ISR wake flag.
  */
@@ -77,7 +78,8 @@ static void on_sensor_frame(const CanRxFrame_t *frame, BaseType_t *task_woken) {
 }
 
 /**
- * @brief Validate and decode a received CAN frame and post its data to the application queues from the ISR.
+ * @brief Validate and decode a received CAN frame and post its data to the application queues.
+ * @note Runs in the CAN receive ISR.
  * @param[in] frame Input received frame; its data is copied before the callback returns.
  * @param[in,out] task_woken Input/output FreeRTOS wake flag shared by ISR queue operations.
  */
