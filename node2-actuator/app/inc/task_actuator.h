@@ -19,7 +19,7 @@ BaseType_t task_actuator_create(void);
 /**
  * @brief Enqueue a batch of button presses and notify CONTROL from task context.
  * @param[in] events Press mask returned by hal_buttons_poll().
- * @note Waits for space if the FIFO is full.
+ * @note Waits at most BUTTON_QUEUE_TIMEOUT_MS for space, then drops the presses.
  */
 void task_actuator_post_buttons(uint8_t events);
 

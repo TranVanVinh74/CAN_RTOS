@@ -25,7 +25,7 @@ BUTTONS ── xButtonQueue (8 mục) ───┘       ├──> Relay quạt
                                          └──> CAN 0x200 tới Node3
 ```
 
-Mỗi mục trong `xButtonQueue` là một mask chứa các lần nhấn đã xác nhận trong cùng một lượt quét. `CONTROL` đọc chúng theo thứ tự. Khi queue đầy, `BUTTONS` chờ có chỗ để gửi. `xUiQueue` luôn giữ bản sao `UiView_t` mới nhất để `UI` đọc ở lần vẽ kế tiếp.
+Mỗi mục trong `xButtonQueue` là một mask chứa các lần nhấn đã xác nhận trong cùng một lượt quét. `CONTROL` đọc chúng theo thứ tự. Khi queue đầy, `BUTTONS` chờ tối đa **20 ms** (`BUTTON_QUEUE_TIMEOUT_MS`); hết thời gian thì bỏ lần nhấn đó để tiếp tục quét. `xUiQueue` luôn giữ bản sao `UiView_t` mới nhất để `UI` đọc ở lần vẽ kế tiếp.
 
 `CONTROL` đọc ngưỡng từ flash khi khởi động, dùng ngưỡng mặc định nếu bản ghi lỗi rồi bật CAN. Ngắt CAN và `BUTTONS` báo cho `CONTROL` bằng task notification sau khi đưa dữ liệu vào queue. Khi chưa có sự kiện, `CONTROL` chờ tối đa **20 ms** để còn kiểm tra lỗi CAN, dữ liệu quá hạn và lịch gửi ngưỡng. Sau **3 giây** không xử lý mẫu mới, màn hình chính có thể hiện `OFFLINE` nếu CAN không báo lỗi.
 

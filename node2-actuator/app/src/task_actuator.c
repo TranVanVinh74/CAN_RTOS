@@ -192,7 +192,8 @@ BaseType_t task_actuator_create(void) {
 }
 
 void task_actuator_post_buttons(uint8_t events) {
-    if (xQueueSend(xButtonQueue, &events, portMAX_DELAY) == pdPASS) {
+    /* A full queue means CONTROL is stalled; the press is dropped so BUTTONS keeps scanning. */
+    if (xQueueSend(xButtonQueue, &events, pdMS_TO_TICKS(BUTTON_QUEUE_TIMEOUT_MS)) == pdPASS) {
         (void)xTaskNotifyGive(xControlTaskHandle);
     }
 }
