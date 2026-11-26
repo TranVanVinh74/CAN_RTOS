@@ -55,7 +55,7 @@ void app_ui_update(const UiView_t *view);
  */
 void app_ui_draw(uint32_t now_ms);
 /**
- * @brief Apply a UI button to draft settings and edit mode; persistence is handled by the actuator task.
+ * @brief Apply a button to draft settings and edit mode in the supplied view only.
  * @param[in,out] view Input/output UI state; button actions modify draft thresholds or edit mode.
  * @param[in] button UI button event to apply.
  */

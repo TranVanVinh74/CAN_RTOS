@@ -20,6 +20,8 @@ typedef struct {
 } SensorData_t;
 
 extern QueueHandle_t xSensorQueue;
+extern QueueHandle_t xButtonQueue;
+extern QueueHandle_t xUiQueue;
 
 /**
  * @brief Create the FreeRTOS queues used to exchange application data.
